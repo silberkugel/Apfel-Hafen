@@ -1,0 +1,46 @@
+# Abhaengigkeiten und erzeugte Webdateien
+/node_modules/
+/.pnpm-store/
+/.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+/coverage/
+/dist/
+/out/
+
+# Umgebungsvariablen und Schluessel
+.env*
+!.env.example
+*.pem
+*.key
+
+# Lokale Laufzeit und Anwendungsdaten
+/runtime/
+/backups/
+/logs/
+*.log
+*.pid
+
+# Lokal kompiliertes PAM-Hilfsprogramm; auth/pam-auth.c bleibt versioniert
+/auth/pam-auth
+
+# Lokale Container-, Image- und Volume-Exporte
+*.tar
+*.tar.gz
+*.oci
+*.img
+
+# Debug-, Editor- und Betriebssystemdateien
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*~
