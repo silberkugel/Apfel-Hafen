@@ -49,7 +49,7 @@ function App() {
 
   function changeLanguage(nextLanguage) {
     setLanguage(nextLanguage);
-    window.localStorage.setItem("containerzentrale.language", nextLanguage);
+    window.localStorage.setItem("apfel-hafen.language", nextLanguage);
   }
 
   useEffect(() => {

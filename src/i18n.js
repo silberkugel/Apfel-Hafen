@@ -3,7 +3,7 @@ export const languageNames = { de: "Deutsch", en: "English" };
 
 const messages = {
   de: {
-    appName: "Containerzentrale",
+    appName: "Apfel-Hafen",
     localOnly: "Nur auf diesem Mac",
     heroTitle: "Alle Container.",
     heroAccent: "Ein ruhiger Ort.",
@@ -61,9 +61,9 @@ const messages = {
     noPorts: "Keine Ports veröffentlicht.",
     close: "Schließen",
     systemSettings: "Systemeinstellungen",
-    administrationDescription: "Hier werden die Einstellungen der Containerzentrale verwaltet.",
+    administrationDescription: "Hier werden die Einstellungen von Apfel-Hafen verwaltet.",
     autoStart: "Automatisch starten",
-    autoStartDescription: "Containerzentrale nach der macOS-Anmeldung automatisch als Hintergrunddienst starten.",
+    autoStartDescription: "Apfel-Hafen nach der macOS-Anmeldung automatisch als Hintergrunddienst starten.",
     statusLoading: "Status wird geladen …",
     settingSaving: "Einstellung wird gespeichert …",
     autoStartEnabled: "Autostart ist aktiviert",
@@ -88,7 +88,7 @@ const messages = {
     language: "Sprache",
   },
   en: {
-    appName: "Container Center",
+    appName: "Apfel-Hafen",
     localOnly: "Only on this Mac",
     heroTitle: "All containers.",
     heroAccent: "One calm place.",
@@ -146,9 +146,9 @@ const messages = {
     noPorts: "No ports published.",
     close: "Close",
     systemSettings: "System settings",
-    administrationDescription: "Manage Container Center settings here.",
+    administrationDescription: "Manage Apfel-Hafen settings here.",
     autoStart: "Start automatically",
-    autoStartDescription: "Start Container Center automatically as a background service after signing in to macOS.",
+    autoStartDescription: "Start Apfel-Hafen automatically as a background service after signing in to macOS.",
     statusLoading: "Loading status …",
     settingSaving: "Saving setting …",
     autoStartEnabled: "Automatic start is enabled",
@@ -179,7 +179,7 @@ export function normalizeLanguage(value) {
 }
 
 export function initialLanguage(storage, browserLanguage) {
-  return normalizeLanguage(storage?.getItem("containerzentrale.language") || browserLanguage);
+  return normalizeLanguage(storage?.getItem("apfel-hafen.language") || browserLanguage);
 }
 
 export function translate(language, key, values = {}) {

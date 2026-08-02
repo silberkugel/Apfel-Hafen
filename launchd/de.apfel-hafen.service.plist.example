@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
   <key>Label</key>
-  <string>de.containerzentrale.service</string>
+  <string>de.apfel-hafen.service</string>
   <key>ProgramArguments</key>
   <array>
     <string>__PROJECT_DIR__/runtime/node</string>
@@ -23,8 +23,8 @@
   <key>ThrottleInterval</key>
   <integer>10</integer>
   <key>StandardOutPath</key>
-  <string>__HOME__/Library/Logs/Containerzentrale/service.log</string>
+  <string>__HOME__/Library/Logs/Apfel-Hafen/service.log</string>
   <key>StandardErrorPath</key>
-  <string>__HOME__/Library/Logs/Containerzentrale/service-error.log</string>
+  <string>__HOME__/Library/Logs/Apfel-Hafen/service-error.log</string>
 </dict>
 </plist>

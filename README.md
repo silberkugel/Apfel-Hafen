@@ -1,8 +1,8 @@
-# Container Center
+# Apfel-Hafen
 
 [Deutsche Version](README-DE.md)
 
-**Container Center** is a local web interface for managing Apple containers on
+**Apfel-Hafen** is a local web interface for managing Apple containers on
 macOS 26. It displays existing containers and lets you start, stop, restart,
 and check them for updated images.
 
@@ -68,7 +68,7 @@ local and are not committed to Git.
 
 ## Starting and stopping
 
-Double-click `Start Container Center.command` in Finder. The local service
+Double-click `Start Apfel-Hafen.command` in Finder. The local service
 starts and opens the interface automatically in the browser. The Terminal
 window must remain open while the application is running.
 
@@ -81,16 +81,16 @@ pnpm start
 The interface is then available at <http://127.0.0.1:4173>.
 
 To stop the application, either close the Terminal window opened during
-startup or double-click `Stop Container Center.command`. Do not start the
+startup or double-click `Stop Apfel-Hafen.command`. Do not start the
 application with `sudo`, because Apple Container service belongs to the signed-in
 user.
 
 ### Optional automatic start
 
-The file `launchd/de.containerzentrale.service.plist.example` is a LaunchAgent
+The file `launchd/de.apfel-hafen.service.plist.example` is a LaunchAgent
 template. Before using it, replace `__PROJECT_DIR__` and `__HOME__` with the
 absolute local paths. Then install the customized file as
-`~/Library/LaunchAgents/de.containerzentrale.service.plist`.
+`~/Library/LaunchAgents/de.apfel-hafen.service.plist`.
 
 ## Usage
 
@@ -105,29 +105,29 @@ The following functions are then available:
 - safely replace a container with the current image
 - change the automatic-start status of the installed LaunchAgent
 
-Before replacing a container, Container Center saves its configuration under
+Before replacing a container, Apfel-Hafen saves its configuration under
 `backups/<Containername>/` and verifies the new configuration with a temporary
 test container. Mounted host directories remain intact. Data stored only in
 the container's writable root filesystem may be lost during replacement.
 
 ## Uninstallation
 
-1. Stop Container Center with `Stop Container Center.command`.
+1. Stop Apfel-Hafen with `Stop Apfel-Hafen.command`.
 2. If automatic start was configured, unload the LaunchAgent:
 
    ```console
-   launchctl bootout "gui/$(id -u)" "$HOME/Library/LaunchAgents/de.containerzentrale.service.plist"
+   launchctl bootout "gui/$(id -u)" "$HOME/Library/LaunchAgents/de.apfel-hafen.service.plist"
    ```
 
-3. Remove `de.containerzentrale.service.plist` from
+3. Remove `de.apfel-hafen.service.plist` from
    `~/Library/LaunchAgents`.
 4. Copy any required configuration backups from the `backups` directory to a
    safe location.
 5. Move the project directory to the Trash in Finder.
 6. Optionally remove the log directory
-   `~/Library/Logs/Containerzentrale`.
+   `~/Library/Logs/Apfel-Hafen`.
 
-Uninstalling Container Center does **not** remove Apple containers, images,
+Uninstalling Apfel-Hafen does **not** remove Apple containers, images,
 volumes, or mounted host data. Manage them separately with Apple's `container`
 CLI if needed.
 

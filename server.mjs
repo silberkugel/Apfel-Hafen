@@ -18,7 +18,7 @@ const checkedUpdates = new Map();
 const sessions = new Map();
 const loginAttempts = new Map();
 const sessionDurationMs = 30 * 60 * 1000;
-const serviceLabel = "de.containerzentrale.service";
+const serviceLabel = "de.apfel-hafen.service";
 const serviceDomain = `gui/${process.getuid()}`;
 
 function runProcess(program, args, input = "", timeout = 30_000) {
@@ -320,4 +320,4 @@ createServer(async (req, res) => {
   if (url.pathname.startsWith("/api/")) return handleApi(req, res, url.pathname);
   if (isDev) return json(res, 404, { error: "Frontend läuft im Entwicklungsmodus auf Port 5173." });
   return serveStatic(req, res, url.pathname);
-}).listen(port, "127.0.0.1", () => console.log(`Containerzentrale: http://127.0.0.1:${port}`));
+}).listen(port, "127.0.0.1", () => console.log(`Apfel-Hafen: http://127.0.0.1:${port}`));

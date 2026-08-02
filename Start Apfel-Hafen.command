@@ -9,7 +9,7 @@ if [[ -z "$NODE_BIN" && -x "$PROJECT_DIR/runtime/node" ]]; then
   NODE_BIN="$PROJECT_DIR/runtime/node"
 fi
 if [[ -z "$NODE_BIN" ]]; then
-  osascript -e 'display alert "Node.js is missing" message "Install Node.js and then start Container Center again." as critical'
+  osascript -e 'display alert "Node.js is missing" message "Install Node.js and then start Apfel-Hafen again." as critical'
   exit 1
 fi
 
@@ -23,7 +23,7 @@ if curl --silent --fail --max-time 1 http://127.0.0.1:4173/ >/dev/null 2>&1; the
   exit 0
 fi
 
-echo "Container Center is starting …"
+echo "Apfel-Hafen is starting …"
 echo "The application runs in the signed-in user's account."
 "$NODE_BIN" "$PROJECT_DIR/server.mjs" &
 SERVER_PID=$!
@@ -38,12 +38,12 @@ trap cleanup EXIT INT TERM
 for attempt in {1..30}; do
   if curl --silent --fail --max-time 1 http://127.0.0.1:4173/ >/dev/null 2>&1; then
     open http://127.0.0.1:4173/
-    echo "Container Center is running. Keep this window open."
+    echo "Apfel-Hafen is running. Keep this window open."
     wait "$SERVER_PID"
     exit $?
   fi
   sleep 0.25
 done
 
-echo "Container Center could not be started."
+echo "Apfel-Hafen could not be started."
 wait "$SERVER_PID"
