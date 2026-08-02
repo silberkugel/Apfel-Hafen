@@ -258,7 +258,7 @@ function App() {
             </button>
             {auth.authenticated && accountMenuOpen && <div className="account-dropdown" role="menu">
               <button role="menuitem" onClick={openAdministration}>{t("administration")}</button>
-              <a role="menuitem" href="https://github.com/silberkugel/apple-container-manager#readme" target="_blank" rel="noreferrer" onClick={() => setAccountMenuOpen(false)}>{t("documentation")}</a>
+              <a role="menuitem" href="https://github.com/silberkugel/Apfel-Hafen#readme" target="_blank" rel="noreferrer" onClick={() => setAccountMenuOpen(false)}>{t("documentation")}</a>
               <button role="menuitem" className="logout-item" onClick={logout}>{t("logout")}</button>
             </div>}
           </div>

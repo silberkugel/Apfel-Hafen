@@ -41,8 +41,8 @@ container system start
 1. Clone the repository and change to the project directory:
 
    ```console
-   git clone git@github.com:silberkugel/apple-container-manager.git
-   cd apple-container-manager
+   git clone git@github.com:silberkugel/Apfel-Hafen.git
+   cd Apfel-Hafen
    ```
 
 2. Install the JavaScript dependencies:
