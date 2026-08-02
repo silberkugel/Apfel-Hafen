@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { parseContainers } from "../lib/container-parser.mjs";
 import { buildCreateArgs, imageDigestFromInspect, pinnedImage } from "../lib/recreate-args.mjs";
+import { buildNewContainerArgs, parseImageNames, safeVolumeSource, validateContainerDraft } from "../lib/container-create.mjs";
 
 const record = {
   id: "evcc",
@@ -62,4 +63,31 @@ test("uses a temporary name for non-destructive preflight creation", () => {
 test("reads image digests and pins rollback references", () => {
   assert.equal(imageDigestFromInspect('[{"configuration":{"descriptor":{"digest":"sha256:new"}}}]'), "sha256:new");
   assert.equal(pinnedImage("docker.io/evcc/evcc:latest", "sha256:old"), "docker.io/evcc/evcc@sha256:old");
+});
+
+test("validates and builds arguments for a new container", () => {
+  const draft = validateContainerDraft({
+    name: "web-1",
+    image: "docker.io/library/nginx:latest",
+    start: true,
+    variables: [{ key: "APP_ENV", value: "production" }],
+    ports: [{ hostPort: 8080, containerPort: 80, protocol: "tcp" }],
+    volumes: [{ subpath: "web-1/data", destination: "/data", readOnly: false }],
+  }, "/ContainerVolumes", []);
+  assert.deepEqual(buildNewContainerArgs(draft), [
+    "create", "--name", "web-1",
+    "--env", "APP_ENV=production",
+    "--publish", "8080:80/tcp",
+    "--volume", "/ContainerVolumes/web-1/data:/data",
+    "docker.io/library/nginx:latest",
+  ]);
+});
+
+test("rejects occupied ports and volume path traversal", () => {
+  assert.throws(() => validateContainerDraft({ name: "web", image: "nginx", ports: [{ hostPort: 8080, containerPort: 80, protocol: "tcp" }] }, "/Volumes", [{ hostPort: 8080, protocol: "tcp" }]), /bereits belegt/);
+  assert.throws(() => safeVolumeSource("/Volumes", "../private"), /außerhalb/);
+});
+
+test("extracts and sorts local image references", () => {
+  assert.deepEqual(parseImageNames(JSON.stringify([{ name: "nginx:latest" }, { reference: "alpine:latest" }, { names: ["nginx:latest", "busybox:1"] }])), ["alpine:latest", "busybox:1", "nginx:latest"]);
 });

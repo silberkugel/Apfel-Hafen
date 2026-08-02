@@ -1,13 +1,14 @@
 import { createServer } from "node:http";
 import { spawn } from "node:child_process";
 import { createReadStream, existsSync } from "node:fs";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { randomBytes } from "node:crypto";
-import { extname, join, normalize } from "node:path";
+import { extname, isAbsolute, join, normalize, relative, resolve } from "node:path";
+import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { parseContainers } from "./lib/container-parser.mjs";
 import { buildCreateArgs, imageDigestFromInspect, pinnedImage, replacementSummary } from "./lib/recreate-args.mjs";
-import { localizeServerMessage, requestLanguage } from "./lib/server-i18n.mjs";
+import { buildNewContainerArgs, parseImageNames, validateContainerDraft } from "./lib/container-create.mjs";
 
 const root = fileURLToPath(new URL(".", import.meta.url));
 const isDev = process.argv.includes("--dev");
@@ -15,11 +16,132 @@ const port = Number(process.env.PORT || (isDev ? 4174 : 4173));
 const containerCli = "/usr/local/bin/container";
 const pamHelper = join(root, "auth", "pam-auth");
 const checkedUpdates = new Map();
+const imageSearchCache = new Map();
 const sessions = new Map();
 const loginAttempts = new Map();
 const sessionDurationMs = 30 * 60 * 1000;
 const serviceLabel = "de.apfel-hafen.service";
 const serviceDomain = `gui/${process.getuid()}`;
+const settingsPath = join(root, "data", "settings.json");
+const defaultSettings = { volumeBasePath: join(homedir(), "ContainerVolumes") };
+const englishMessages = new Map([
+  ["Die Administrationseinstellungen konnten nicht gelesen werden.", "Administration settings could not be read."],
+  ["Bitte einen gültigen absoluten Volume-Pfad angeben.", "Enter a valid absolute volume path."],
+  ["Der Ordnerdialog konnte nicht geöffnet werden.", "The folder picker could not be opened."],
+  ["Der Autostart-Status konnte nicht gelesen werden.", "The automatic startup status could not be read."],
+  ["Benutzername oder Passwort ist ungültig.", "The username or password is invalid."],
+  ["Der lokale Anmeldehelfer fehlt.", "The local authentication helper is missing."],
+  ["Benutzername oder Passwort ist nicht korrekt.", "The username or password is incorrect."],
+  ["Nur macOS-Administratoren dürfen sich anmelden.", "Only macOS administrators may sign in."],
+  ["Apple Container CLI wurde unter /usr/local/bin/container nicht gefunden.", "Apple Container CLI was not found at /usr/local/bin/container."],
+  ["Die öffentliche Image-Suche ist zurzeit nicht erreichbar.", "Public image search is currently unavailable."],
+  ["Container wurde erstellt und gestartet.", "The container was created and started."],
+  ["Container wurde erstellt.", "The container was created."],
+  ["Container ist nicht mehr vorhanden.", "The container no longer exists."],
+  ["Der eingegebene Containername stimmt nicht überein.", "The entered container name does not match."],
+  ["Container und zugehörige Volume-Daten wurden gelöscht.", "The container and its associated volume data were deleted."],
+  ["Container wurde gelöscht.", "The container was deleted."],
+  ["Image-Referenz oder bisheriger Digest fehlt.", "The image reference or previous digest is missing."],
+  ["Bitte das Update unmittelbar vor dem Ersetzen erneut prüfen.", "Check for updates again immediately before replacing the container."],
+  ["Für diesen Container wurde kein neuer Image-Digest gefunden.", "No new image digest was found for this container."],
+  ["Der Container hat sich seit der Update-Prüfung verändert. Bitte erneut prüfen.", "The container changed after the update check. Check again."],
+  ["Container wurde mit dem neuen Image neu erstellt.", "The container was recreated with the new image."],
+  ["Container wurde neu gestartet.", "The container was restarted."],
+  ["Unbekannte Aktion.", "Unknown action."],
+  ["Anfrage ist zu groß.", "The request is too large."],
+  ["Anmeldung ist nur von der lokalen Oberfläche erlaubt.", "Sign-in is allowed only from the local interface."],
+  ["Zu viele Anmeldeversuche. Bitte fünf Minuten warten.", "Too many sign-in attempts. Wait five minutes."],
+  ["Abmeldung ist nur von der lokalen Oberfläche erlaubt.", "Sign-out is allowed only from the local interface."],
+  ["Bitte als macOS-Administrator anmelden.", "Sign in as a macOS administrator."],
+  ["Einstellungen dürfen nur von der lokalen Oberfläche geändert werden.", "Settings may be changed only from the local interface."],
+  ["Ungültige Autostart-Einstellung.", "Invalid automatic startup setting."],
+  ["Der Ordnerdialog darf nur von der lokalen Oberfläche geöffnet werden.", "The folder picker may be opened only from the local interface."],
+  ["Container dürfen nur von der lokalen Oberfläche erstellt werden.", "Containers may be created only from the local interface."],
+  ["Container dürfen nur von der lokalen Oberfläche gelöscht werden.", "Containers may be deleted only from the local interface."],
+  ["Verwaltungsaktionen sind nur von der lokalen Oberfläche erlaubt.", "Administrative actions are allowed only from the local interface."],
+  ["Containername stimmt nicht überein.", "The container name does not match."],
+  ["Container ist nicht mehr vorhanden. Bitte Liste aktualisieren.", "The container no longer exists. Refresh the list."],
+  ["Aktion wurde ausgeführt.", "The action was completed."],
+  ["Nicht gefunden.", "Not found."],
+  ["Frontend läuft im Entwicklungsmodus auf Port 5173.", "The frontend is running in development mode on port 5173."],
+  ["Die Containerliste hat ein unerwartetes Format.", "The container list has an unexpected format."],
+  ["Der Digest des geladenen Images konnte nicht ermittelt werden.", "The digest of the pulled image could not be determined."],
+  ["Container-ID oder Image fehlt in der Sicherung.", "The container ID or image is missing from the backup."],
+  ["Zusätzliche Gruppen können noch nicht sicher rekonstruiert werden.", "Supplemental groups cannot yet be reconstructed safely."],
+  ["Sysctl-Einstellungen können noch nicht sicher rekonstruiert werden.", "Sysctl settings cannot yet be reconstructed safely."],
+  ["Eine Mount-Konfiguration ist unvollständig.", "A mount configuration is incomplete."],
+  ["Der globale Volume-Pfad muss absolut sein.", "The global volume path must be absolute."],
+  ["Der Volume-Unterordner muss relativ sein.", "The volume subfolder must be relative."],
+  ["Der Volume-Unterordner liegt außerhalb des globalen Pfads.", "The volume subfolder is outside the global path."],
+  ["Der Containername darf nur Buchstaben, Zahlen, Punkt, Unterstrich und Bindestrich enthalten.", "The container name may contain only letters, numbers, periods, underscores, and hyphens."],
+  ["Bitte eine gültige Image-Referenz angeben.", "Enter a valid image reference."],
+  ["Es sind höchstens 128 Variablen erlaubt.", "A maximum of 128 variables is allowed."],
+  ["Es sind höchstens 32 Portfreigaben erlaubt.", "A maximum of 32 port mappings is allowed."],
+  ["Als Protokoll ist nur TCP oder UDP erlaubt.", "Only TCP or UDP is allowed as a protocol."],
+  ["Es sind höchstens 16 Volumes erlaubt.", "A maximum of 16 volumes is allowed."],
+  ["Der Container-Pfad eines Volumes muss absolut sein.", "A volume's container path must be absolute."],
+  ["Ein Container mit diesem Namen ist bereits vorhanden.", "A container with this name already exists."],
+]);
+
+function requestLanguage(req) {
+  const selected = String(req.headers["x-app-language"] || "").toLowerCase();
+  if (selected === "de" || selected === "en") return selected;
+  return String(req.headers["accept-language"] || "").toLowerCase().startsWith("de") ? "de" : "en";
+}
+
+function englishMessage(message) {
+  if (englishMessages.has(message)) return englishMessages.get(message);
+  return String(message)
+    .replace(/^(.+) ist ungültig\.$/, "$1 is invalid.")
+    .replace(/^(.+) muss zwischen 1 und 65535 liegen\.$/, "$1 must be between 1 and 65535.")
+    .replace(/^Der Variablenname „(.+)“ ist ungültig oder doppelt\.$/, "The variable name ‘$1’ is invalid or duplicated.")
+    .replace(/^Der Wert von „(.+)“ ist zu lang\.$/, "The value of ‘$1’ is too long.")
+    .replace(/^Der externe Port (.+) ist bereits belegt\.$/, "External port $1 is already in use.")
+    .replace(/^Der Container konnte nicht gestartet werden und wurde zurückgerollt\. Ursache: /, "The container could not be started and was rolled back. Cause: ")
+    .replace(/^Sicherheitsprüfung fehlgeschlagen; der vorhandene Container wurde nicht verändert\. Ursache: /, "The safety check failed; the existing container was not changed. Cause: ")
+    .replace(/^Ersetzen wurde vor dem Löschen abgebrochen: /, "Replacement was canceled before deletion: ")
+    .replace(/^Das Update ist fehlgeschlagen; der vorherige Container wurde automatisch wiederhergestellt\. Ursache: /, "The update failed; the previous container was restored automatically. Cause: ")
+    .replace(/^Update und automatische Wiederherstellung sind fehlgeschlagen\. Die Sicherung liegt unter (.+)\. Ursache: /, "The update and automatic recovery failed. The backup is stored at $1. Cause: ")
+    .replace(/^Der Autostart konnte nicht aktiviert werden\./, "Automatic startup could not be enabled.")
+    .replace(/^Der Autostart konnte nicht deaktiviert werden\./, "Automatic startup could not be disabled.")
+    .replace(/ Prüfe mit „container system status“, ob der Apple-Containerdienst für diesen Benutzer läuft\.$/, " Check with ‘container system status’ whether the Apple container service is running for this user.");
+}
+
+async function readSettings() {
+  try {
+    const stored = JSON.parse(await readFile(settingsPath, "utf8"));
+    return { ...defaultSettings, ...stored };
+  } catch (error) {
+    if (error.code === "ENOENT") return { ...defaultSettings };
+    throw new Error("Die Administrationseinstellungen konnten nicht gelesen werden.");
+  }
+}
+
+async function saveSettings(settings) {
+  await mkdir(join(root, "data"), { recursive: true });
+  await writeFile(settingsPath, JSON.stringify(settings, null, 2), { mode: 0o600 });
+}
+
+async function setVolumeBasePath(value) {
+  const volumeBasePath = String(value || "").trim();
+  if (!isAbsolute(volumeBasePath) || volumeBasePath.length > 500) throw new Error("Bitte einen gültigen absoluten Volume-Pfad angeben.");
+  await mkdir(volumeBasePath, { recursive: true });
+  const settings = { ...(await readSettings()), volumeBasePath: resolve(volumeBasePath) };
+  await saveSettings(settings);
+  return settings;
+}
+
+async function selectVolumeBasePath(language) {
+  const prompt = language === "en" ? "Select the global folder for container volumes" : "Globalen Ordner für Container-Volumes auswählen";
+  const result = await runProcess("/usr/bin/osascript", [
+    "-e", `POSIX path of (choose folder with prompt ${JSON.stringify(prompt)})`,
+  ], "", 300_000);
+  if (result.code !== 0) {
+    if (/User canceled/i.test(result.stderr)) return { canceled: true };
+    throw new Error(result.stderr || "Der Ordnerdialog konnte nicht geöffnet werden.");
+  }
+  return { canceled: false, volumeBasePath: resolve(result.stdout) };
+}
 
 function runProcess(program, args, input = "", timeout = 30_000) {
   return new Promise((resolve, reject) => {
@@ -130,6 +252,77 @@ async function currentState() {
   return { records: JSON.parse(output || "[]"), containers: parseContainers(output) };
 }
 
+async function imageNames() {
+  return parseImageNames(await runContainer(["image", "list", "--format", "json"]));
+}
+
+async function searchImages(query) {
+  const cleanQuery = String(query || "").trim().toLowerCase();
+  if (cleanQuery.length < 2 || cleanQuery.length > 80 || !/^[a-z0-9._/ -]+$/.test(cleanQuery)) return [];
+  const cached = imageSearchCache.get(cleanQuery);
+  if (cached && Date.now() - cached.createdAt < 5 * 60 * 1000) return cached.results;
+
+  const url = new URL("https://hub.docker.com/v2/search/repositories/");
+  url.searchParams.set("query", cleanQuery);
+  url.searchParams.set("page_size", "12");
+  const response = await fetch(url, { headers: { Accept: "application/json", "User-Agent": "Apfel-Hafen/1.0" }, signal: AbortSignal.timeout(8_000) });
+  if (!response.ok) throw new Error("Die öffentliche Image-Suche ist zurzeit nicht erreichbar.");
+  const body = await response.json();
+  const results = (Array.isArray(body.results) ? body.results : []).map((item) => {
+    const rawName = String(item.repo_name || [item.namespace, item.name].filter(Boolean).join("/") || item.name || "").replace(/^docker\.io\//, "");
+    const official = Boolean(item.is_official) || rawName.startsWith("library/");
+    const repository = official ? rawName.replace(/^library\//, "") : rawName;
+    return {
+      name: repository,
+      reference: official ? `docker.io/library/${repository}:latest` : `docker.io/${repository}:latest`,
+      description: String(item.short_description || item.description || "").slice(0, 240),
+      official,
+      pulls: Number(item.pull_count || 0),
+      stars: Number(item.star_count || 0),
+    };
+  }).filter((item) => item.name && !item.name.includes(" "));
+  imageSearchCache.set(cleanQuery, { createdAt: Date.now(), results });
+  return results;
+}
+
+async function createContainer(input) {
+  const { records, containers } = await currentState();
+  const settings = await readSettings();
+  const occupiedPorts = containers.flatMap((container) => container.ports);
+  const draft = validateContainerDraft(input, settings.volumeBasePath, occupiedPorts);
+  if (records.some((item) => String(item.id || item.configuration?.id) === draft.name)) throw new Error("Ein Container mit diesem Namen ist bereits vorhanden.");
+  for (const volume of draft.volumes) await mkdir(volume.source, { recursive: true });
+  await runContainer(buildNewContainerArgs(draft), 600_000);
+  try {
+    if (draft.start) await runContainer(["start", draft.name]);
+  } catch (error) {
+    await runContainer(["delete", "--force", draft.name]).catch(() => {});
+    throw new Error(`Der Container konnte nicht gestartet werden und wurde zurückgerollt. Ursache: ${error.message}`);
+  }
+  return { message: draft.start ? "Container wurde erstellt und gestartet." : "Container wurde erstellt." };
+}
+
+async function deleteContainer(name, input) {
+  const { records, containers } = await currentState();
+  const selected = containers.find((container) => container.name === name);
+  const record = records.find((item) => String(item.id || item.configuration?.id) === name);
+  if (!selected || !record) throw new Error("Container ist nicht mehr vorhanden.");
+  if (input?.confirmation !== name) throw new Error("Der eingegebene Containername stimmt nicht überein.");
+
+  const settings = await readSettings();
+  const removableSources = (record.configuration?.mounts || []).map((mount) => String(mount.source || "")).filter((source) => {
+    if (!source || !isAbsolute(source)) return false;
+    const relation = relative(resolve(settings.volumeBasePath), resolve(source));
+    return relation && !relation.startsWith("..") && !isAbsolute(relation);
+  });
+  await runContainer(["delete", ...(selected.status === "running" ? ["--force"] : []), name]);
+  if (input?.deleteVolumes) {
+    for (const source of removableSources) await rm(source, { recursive: true, force: true });
+  }
+  checkedUpdates.delete(name);
+  return { message: input?.deleteVolumes ? "Container und zugehörige Volume-Daten wurden gelöscht." : "Container wurde gelöscht." };
+}
+
 async function checkUpdate(name) {
   const { records, containers } = await currentState();
   const selected = containers.find((container) => container.name === name);
@@ -220,9 +413,11 @@ async function executeLifecycle(action, selected) {
 }
 
 function json(res, status, body, headers = {}) {
-  const language = res.appLanguage || "de";
-  if (body?.error) body = { ...body, error: localizeServerMessage(body.error, language) };
-  if (body?.message) body = { ...body, message: localizeServerMessage(body.message, language) };
+  if (res.czLanguage === "en" && body && typeof body === "object") {
+    body = { ...body };
+    if (typeof body.error === "string") body.error = englishMessage(body.error);
+    if (typeof body.message === "string") body.message = englishMessage(body.message);
+  }
   res.writeHead(status, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store", ...headers });
   res.end(JSON.stringify(body));
 }
@@ -231,7 +426,7 @@ async function readBody(req) {
   let raw = "";
   for await (const chunk of req) {
     raw += chunk;
-    if (raw.length > 16_384) throw new Error("Anfrage ist zu groß.");
+    if (raw.length > 524_288) throw new Error("Anfrage ist zu groß.");
   }
   return JSON.parse(raw || "{}");
 }
@@ -268,6 +463,28 @@ async function handleApi(req, res, pathname) {
       const { containers } = await currentState();
       return json(res, 200, { containers, refreshedAt: new Date().toISOString() });
     }
+    if (pathname === "/api/administration/settings" && ["GET", "POST"].includes(req.method)) {
+      const session = currentSession(req);
+      if (!session) return json(res, 401, { error: "Bitte als macOS-Administrator anmelden." });
+      if (req.method === "GET") return json(res, 200, { ...(await readSettings()), ...(await autostartStatus()) });
+      if (!requireLocalOrigin(req)) return json(res, 403, { error: "Einstellungen dürfen nur von der lokalen Oberfläche geändert werden." });
+      const body = await readBody(req);
+      let settings = await readSettings();
+      if (body.volumeBasePath !== undefined) settings = await setVolumeBasePath(body.volumeBasePath);
+      if (body.enabled !== undefined) {
+        if (typeof body.enabled !== "boolean") return json(res, 400, { error: "Ungültige Autostart-Einstellung." });
+        const current = await autostartStatus();
+        if (current.enabled !== body.enabled) await setAutostart(body.enabled);
+      }
+      return json(res, 200, { ...settings, ...(await autostartStatus()) });
+    }
+    if (req.method === "POST" && pathname === "/api/administration/select-volume-path") {
+      if (!requireLocalOrigin(req)) return json(res, 403, { error: "Der Ordnerdialog darf nur von der lokalen Oberfläche geöffnet werden." });
+      const session = currentSession(req);
+      if (!session) return json(res, 401, { error: "Bitte als macOS-Administrator anmelden." });
+      const body = await readBody(req);
+      return json(res, 200, await selectVolumeBasePath(body.language));
+    }
     if (pathname === "/api/administration/autostart" && ["GET", "POST"].includes(req.method)) {
       const session = currentSession(req);
       if (!session) return json(res, 401, { error: "Bitte als macOS-Administrator anmelden." });
@@ -276,6 +493,31 @@ async function handleApi(req, res, pathname) {
       const body = await readBody(req);
       if (typeof body.enabled !== "boolean") return json(res, 400, { error: "Ungültige Autostart-Einstellung." });
       return json(res, 200, await setAutostart(body.enabled));
+    }
+    if (req.method === "GET" && pathname === "/api/images") {
+      const session = currentSession(req);
+      if (!session) return json(res, 401, { error: "Bitte als macOS-Administrator anmelden." });
+      return json(res, 200, { images: await imageNames() });
+    }
+    if (req.method === "GET" && pathname === "/api/images/search") {
+      const session = currentSession(req);
+      if (!session) return json(res, 401, { error: "Bitte als macOS-Administrator anmelden." });
+      const url = new URL(req.url, `http://${req.headers.host || "127.0.0.1"}`);
+      return json(res, 200, { results: await searchImages(url.searchParams.get("q")) });
+    }
+    if (req.method === "POST" && pathname === "/api/containers") {
+      if (!requireLocalOrigin(req)) return json(res, 403, { error: "Container dürfen nur von der lokalen Oberfläche erstellt werden." });
+      const session = currentSession(req);
+      if (!session) return json(res, 401, { error: "Bitte als macOS-Administrator anmelden." });
+      return json(res, 201, { ok: true, ...(await createContainer(await readBody(req))) });
+    }
+    const deleteMatch = pathname.match(/^\/api\/containers\/([^/]+)$/);
+    if (req.method === "DELETE" && deleteMatch) {
+      if (!requireLocalOrigin(req)) return json(res, 403, { error: "Container dürfen nur von der lokalen Oberfläche gelöscht werden." });
+      const session = currentSession(req);
+      if (!session) return json(res, 401, { error: "Bitte als macOS-Administrator anmelden." });
+      const name = decodeURIComponent(deleteMatch[1]);
+      return json(res, 200, { ok: true, ...(await deleteContainer(name, await readBody(req))) });
     }
     const match = pathname.match(/^\/api\/containers\/([^/]+)\/(start|stop|restart|update-check|replace)$/);
     if (req.method === "POST" && match) {
@@ -315,7 +557,7 @@ function serveStatic(req, res, pathname) {
 }
 
 createServer(async (req, res) => {
-  res.appLanguage = requestLanguage(req.headers["x-app-language"] || req.headers["accept-language"]);
+  res.czLanguage = requestLanguage(req);
   const url = new URL(req.url, `http://${req.headers.host || "127.0.0.1"}`);
   if (url.pathname.startsWith("/api/")) return handleApi(req, res, url.pathname);
   if (isDev) return json(res, 404, { error: "Frontend läuft im Entwicklungsmodus auf Port 5173." });

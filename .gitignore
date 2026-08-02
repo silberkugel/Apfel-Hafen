@@ -21,6 +21,7 @@
 # Lokale Laufzeit und Anwendungsdaten
 /runtime/
 /backups/
+/data/
 /logs/
 *.log
 *.pid

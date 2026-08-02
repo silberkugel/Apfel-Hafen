@@ -3,8 +3,8 @@
 [Deutsche Version](README-DE.md)
 
 **Apfel-Hafen** is a local web interface for managing Apple containers on
-macOS 26. It displays existing containers and lets you start, stop, restart,
-and check them for updated images.
+macOS 26. It displays existing containers in a compact layout and lets you
+create, start, stop, restart, safely delete, and check them for updated images.
 
 The interface is available only on the Mac at `http://127.0.0.1:4173`.
 Changing containers requires signing in with a local macOS administrator
@@ -101,8 +101,12 @@ For administrative actions, sign in with a local macOS administrator account.
 The following functions are then available:
 
 - start, stop, and restart containers
+- create containers with image search, port mappings, volumes, and environment variables
+- safely delete containers after confirming their names; optionally delete
+  volume data managed by Apfel-Hafen as well
 - check for a newer version of the image in use
 - safely replace a container with the current image
+- configure the global base path for volumes managed by Apfel-Hafen
 - change the automatic-start status of the installed LaunchAgent
 
 Before replacing a container, Apfel-Hafen saves its configuration under

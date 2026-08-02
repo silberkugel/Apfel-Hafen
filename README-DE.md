@@ -3,8 +3,9 @@
 [English version](README.md)
 
 **Apfel-Hafen** ist eine lokale Weboberfläche zur Verwaltung von
-Apple-Containern unter macOS 26. Sie zeigt vorhandene Container an und kann sie
-starten, stoppen, neu starten sowie auf aktualisierte Images prüfen.
+Apple-Containern unter macOS 26. Sie zeigt vorhandene Container kompakt an und
+kann sie erstellen, starten, stoppen, neu starten, sicher löschen sowie auf
+aktualisierte Images prüfen.
 
 Die Oberfläche ist ausschließlich auf dem Mac unter
 `http://127.0.0.1:4173` erreichbar. Änderungen an Containern erfordern die
@@ -103,8 +104,12 @@ Für schreibende Aktionen melden Sie sich mit einem lokalen
 macOS-Administratorkonto an. Danach stehen folgende Funktionen bereit:
 
 - Container starten, stoppen und neu starten
+- Container mit Image-Suche, Portfreigaben, Volumes und Umgebungsvariablen erstellen
+- Container nach Eingabe ihres Namens sicher löschen; optional können die von
+  Apfel-Hafen verwalteten Volume-Daten mitgelöscht werden
 - nach einer neueren Version des verwendeten Images suchen
 - Container kontrolliert mit dem aktuellen Image ersetzen
+- den globalen Basispfad für von Apfel-Hafen verwaltete Volumes festlegen
 - Autostartstatus des installierten LaunchAgents ändern
 
 Vor dem Ersetzen eines Containers legt Apfel-Hafen unter
