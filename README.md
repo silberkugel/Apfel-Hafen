@@ -39,6 +39,15 @@ container system start
 
 ## Installation
 
+### Ready-to-use release
+
+The `Apfel-Hafen-0.2.0-macos-arm64.zip` archive contains the required Node.js
+runtime, compiled PAM helper, and built web interface. Apple containers,
+images, volumes, and application data are not included. Extract the archive
+and run `Start-Apfel-Hafen.command`.
+
+### From source
+
 1. Clone the repository and change to the project directory:
 
    ```console
@@ -67,9 +76,11 @@ container system start
 The compiled PAM helper, installed dependencies, and generated web files stay
 local and are not committed to Git.
 
+Run `pnpm release` to test and build a complete release archive under `out/`.
+
 ## Starting and stopping
 
-Double-click `Start Apfel-Hafen.command` in Finder. The local service
+Double-click `Start-Apfel-Hafen.command` in Finder. The local service
 starts and opens the interface automatically in the browser. The Terminal
 window must remain open while the application is running.
 
@@ -88,16 +99,16 @@ on the client device or replace it with one issued by a trusted certificate
 authority.
 
 To stop the application, either close the Terminal window opened during
-startup or double-click `Stop Apfel-Hafen.command`. Do not start the
+startup or double-click `Stop-Apfel-Hafen.command`. Do not start the
 application with `sudo`, because Apple Container service belongs to the signed-in
 user.
 
 ### Optional automatic start
 
-The file `launchd/de.apfel-hafen.service.plist.example` is a LaunchAgent
-template. Before using it, replace `__PROJECT_DIR__` and `__HOME__` with the
-absolute local paths. Then install the customized file as
-`~/Library/LaunchAgents/de.apfel-hafen.service.plist`.
+After administrator sign-in, automatic start can be enabled or disabled under
+**Administration**. When enabled, Apfel-Hafen installs or updates the
+LaunchAgent for the current installation directory. The display distinguishes
+automatic start from the currently loaded service.
 
 ## Usage
 
@@ -117,7 +128,7 @@ The following functions are then available:
 - switch between local-only access (`127.0.0.1`) and network access (`0.0.0.0`)
 - activate a custom PEM server certificate with its matching private key or
   switch back to the automatically generated certificate
-- change the automatic-start status of the installed LaunchAgent
+- install or update the LaunchAgent and change its automatic-start status
 
 Certificates and private keys are stored outside the web interface under
 `data/tls/`. The private key is readable only by the account running the
@@ -130,7 +141,7 @@ the container's writable root filesystem may be lost during replacement.
 
 ## Uninstallation
 
-1. Stop Apfel-Hafen with `Stop Apfel-Hafen.command`.
+1. Stop Apfel-Hafen with `Stop-Apfel-Hafen.command`.
 2. If automatic start was configured, unload the LaunchAgent:
 
    ```console

@@ -4,9 +4,12 @@ set -u
 PROJECT_DIR="${0:A:h}"
 cd "$PROJECT_DIR" || exit 1
 
-NODE_BIN="$(command -v node 2>/dev/null || true)"
-if [[ -z "$NODE_BIN" && -x "$PROJECT_DIR/runtime/node" ]]; then
+NODE_BIN=""
+if [[ -x "$PROJECT_DIR/runtime/node" ]]; then
   NODE_BIN="$PROJECT_DIR/runtime/node"
+fi
+if [[ -z "$NODE_BIN" ]]; then
+  NODE_BIN="$(command -v node 2>/dev/null || true)"
 fi
 if [[ -z "$NODE_BIN" ]]; then
   osascript -e 'display alert "Node.js is missing" message "Install Node.js and then start Apfel-Hafen again." as critical'
