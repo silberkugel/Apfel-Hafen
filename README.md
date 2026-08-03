@@ -41,7 +41,7 @@ container system start
 
 ### Ready-to-use release
 
-The `Apfel-Hafen-0.2.0-macos-arm64.zip` archive contains the required Node.js
+The `Apfel-Hafen-0.2.1-macos-arm64.zip` archive contains the required Node.js
 runtime, compiled PAM helper, and built web interface. Apple containers,
 images, volumes, and application data are not included. Extract the archive
 and run `Start-Apfel-Hafen.command`.
