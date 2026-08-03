@@ -7,8 +7,8 @@ Apple-Containern unter macOS 26. Sie zeigt vorhandene Container kompakt an und
 kann sie erstellen, starten, stoppen, neu starten, sicher löschen sowie auf
 aktualisierte Images prüfen.
 
-Die Oberfläche ist ausschließlich auf dem Mac unter
-`http://127.0.0.1:4173` erreichbar. Änderungen an Containern erfordern die
+Die Oberfläche wird ausschließlich über HTTPS bereitgestellt und ist in der
+lokalen Standardeinstellung unter `https://127.0.0.1:4173` erreichbar. Änderungen an Containern erfordern die
 Anmeldung eines lokalen macOS-Administrators. Das Passwort wird über PAM
 geprüft und nicht gespeichert.
 
@@ -80,7 +80,13 @@ Alternativ kann die Anwendung im Projektordner gestartet werden:
 pnpm start
 ```
 
-Anschließend ist sie unter <http://127.0.0.1:4173> erreichbar.
+Anschließend ist sie unter <https://127.0.0.1:4173> erreichbar.
+
+Beim ersten Start erzeugt Apfel-Hafen automatisch ein selbstsigniertes
+Serverzertifikat. Der Browser zeigt deshalb zunächst eine Zertifikatswarnung.
+Das Zertifikat verschlüsselt die Verbindung dennoch; für einen Zugriff ohne
+Warnung muss es auf dem Endgerät als vertrauenswürdig eingerichtet oder durch
+ein Zertifikat einer vertrauten Zertifizierungsstelle ersetzt werden.
 
 Zum Beenden entweder das beim Start geöffnete Terminalfenster schließen oder
 `Stop Apfel-Hafen.command` doppelklicken. Die Anwendung darf nicht
@@ -110,7 +116,15 @@ macOS-Administratorkonto an. Danach stehen folgende Funktionen bereit:
 - nach einer neueren Version des verwendeten Images suchen
 - Container kontrolliert mit dem aktuellen Image ersetzen
 - den globalen Basispfad für von Apfel-Hafen verwaltete Volumes festlegen
+- zwischen rein lokaler Erreichbarkeit (`127.0.0.1`) und Netzwerkzugriff
+  (`0.0.0.0`) wechseln
+- ein eigenes PEM-Serverzertifikat mit passendem privaten Schlüssel aktivieren
+  oder wieder auf das automatisch erzeugte Zertifikat zurückschalten
 - Autostartstatus des installierten LaunchAgents ändern
+
+Zertifikate und private Schlüssel werden unter `data/tls/` außerhalb der
+Weboberfläche gespeichert. Der private Schlüssel ist nur für den ausführenden
+Benutzer lesbar. HTTP-Verbindungen werden nicht angenommen.
 
 Vor dem Ersetzen eines Containers legt Apfel-Hafen unter
 `backups/<Containername>/` eine Sicherung seiner Konfiguration an und prüft die

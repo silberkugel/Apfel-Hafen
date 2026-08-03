@@ -18,8 +18,8 @@ if [[ ! -f "$PROJECT_DIR/dist/index.html" ]]; then
   exit 1
 fi
 
-if curl --silent --fail --max-time 1 http://127.0.0.1:4173/ >/dev/null 2>&1; then
-  open http://127.0.0.1:4173/
+if curl --insecure --silent --fail --max-time 1 https://127.0.0.1:4173/ >/dev/null 2>&1; then
+  open https://127.0.0.1:4173/
   exit 0
 fi
 
@@ -36,8 +36,8 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 for attempt in {1..30}; do
-  if curl --silent --fail --max-time 1 http://127.0.0.1:4173/ >/dev/null 2>&1; then
-    open http://127.0.0.1:4173/
+  if curl --insecure --silent --fail --max-time 1 https://127.0.0.1:4173/ >/dev/null 2>&1; then
+    open https://127.0.0.1:4173/
     echo "Apfel-Hafen is running. Keep this window open."
     wait "$SERVER_PID"
     exit $?

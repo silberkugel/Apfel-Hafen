@@ -6,7 +6,8 @@
 macOS 26. It displays existing containers in a compact layout and lets you
 create, start, stop, restart, safely delete, and check them for updated images.
 
-The interface is available only on the Mac at `http://127.0.0.1:4173`.
+The interface is served exclusively over HTTPS and is available in the default
+local configuration at `https://127.0.0.1:4173`.
 Changing containers requires signing in with a local macOS administrator
 account. The password is verified through PAM and is not stored.
 
@@ -78,7 +79,13 @@ Alternatively, start the application from the project directory:
 pnpm start
 ```
 
-The interface is then available at <http://127.0.0.1:4173>.
+The interface is then available at <https://127.0.0.1:4173>.
+
+On first launch, Apfel-Hafen automatically generates a self-signed server
+certificate. The browser therefore initially displays a certificate warning.
+The connection is still encrypted; to avoid the warning, trust the certificate
+on the client device or replace it with one issued by a trusted certificate
+authority.
 
 To stop the application, either close the Terminal window opened during
 startup or double-click `Stop Apfel-Hafen.command`. Do not start the
@@ -107,7 +114,14 @@ The following functions are then available:
 - check for a newer version of the image in use
 - safely replace a container with the current image
 - configure the global base path for volumes managed by Apfel-Hafen
+- switch between local-only access (`127.0.0.1`) and network access (`0.0.0.0`)
+- activate a custom PEM server certificate with its matching private key or
+  switch back to the automatically generated certificate
 - change the automatic-start status of the installed LaunchAgent
+
+Certificates and private keys are stored outside the web interface under
+`data/tls/`. The private key is readable only by the account running the
+service. Plain HTTP connections are not accepted.
 
 Before replacing a container, Apfel-Hafen saves its configuration under
 `backups/<Containername>/` and verifies the new configuration with a temporary

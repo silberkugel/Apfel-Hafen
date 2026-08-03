@@ -1,4 +1,4 @@
-import { createServer } from "node:http";
+import { createServer } from "node:https";
 import { spawn } from "node:child_process";
 import { createReadStream, existsSync } from "node:fs";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
@@ -9,6 +9,8 @@ import { fileURLToPath } from "node:url";
 import { parseContainers } from "./lib/container-parser.mjs";
 import { buildCreateArgs, imageDigestFromInspect, pinnedImage, replacementSummary } from "./lib/recreate-args.mjs";
 import { buildNewContainerArgs, parseImageNames, validateContainerDraft } from "./lib/container-create.mjs";
+import { localListenHost, normalizeListenHost, requestMatchesOrigin } from "./lib/network-settings.mjs";
+import { installCustomCertificate, loadTlsCertificate, removeCustomCertificate } from "./lib/tls-certificates.mjs";
 
 const root = fileURLToPath(new URL(".", import.meta.url));
 const isDev = process.argv.includes("--dev");
@@ -23,10 +25,16 @@ const sessionDurationMs = 30 * 60 * 1000;
 const serviceLabel = "de.apfel-hafen.service";
 const serviceDomain = `gui/${process.getuid()}`;
 const settingsPath = join(root, "data", "settings.json");
-const defaultSettings = { volumeBasePath: join(homedir(), "ContainerVolumes") };
+const defaultSettings = { volumeBasePath: join(homedir(), "ContainerVolumes"), listenHost: localListenHost };
 const englishMessages = new Map([
   ["Die Administrationseinstellungen konnten nicht gelesen werden.", "Administration settings could not be read."],
   ["Bitte einen gültigen absoluten Volume-Pfad angeben.", "Enter a valid absolute volume path."],
+  ["Ungültige Einstellung für den Netzwerkzugriff.", "Invalid network access setting."],
+  ["Das Zertifikat ist ungültig.", "The certificate is invalid."],
+  ["Der private Schlüssel ist ungültig.", "The private key is invalid."],
+  ["Zertifikat und privater Schlüssel passen nicht zusammen.", "The certificate and private key do not match."],
+  ["Das Zertifikat ist noch nicht gültig.", "The certificate is not valid yet."],
+  ["Das Zertifikat ist abgelaufen.", "The certificate has expired."],
   ["Der Ordnerdialog konnte nicht geöffnet werden.", "The folder picker could not be opened."],
   ["Der Autostart-Status konnte nicht gelesen werden.", "The automatic startup status could not be read."],
   ["Benutzername oder Passwort ist ungültig.", "The username or password is invalid."],
@@ -110,7 +118,7 @@ function englishMessage(message) {
 async function readSettings() {
   try {
     const stored = JSON.parse(await readFile(settingsPath, "utf8"));
-    return { ...defaultSettings, ...stored };
+    return { ...defaultSettings, ...stored, listenHost: normalizeListenHost(stored.listenHost) };
   } catch (error) {
     if (error.code === "ENOENT") return { ...defaultSettings };
     throw new Error("Die Administrationseinstellungen konnten nicht gelesen werden.");
@@ -180,7 +188,7 @@ function cookies(req) {
 }
 
 function currentSession(req) {
-  const token = cookies(req).cz_session;
+  const token = cookies(req)["__Host-apfel_session"];
   const session = token ? sessions.get(token) : null;
   if (!session || session.expiresAt <= Date.now()) {
     if (token) sessions.delete(token);
@@ -190,14 +198,7 @@ function currentSession(req) {
 }
 
 function requireLocalOrigin(req) {
-  const origin = req.headers.origin;
-  if (!origin) return false;
-  try {
-    const url = new URL(origin);
-    return url.protocol === "http:" && ["127.0.0.1", "localhost", "[::1]"].includes(url.hostname);
-  } catch {
-    return false;
-  }
+  return requestMatchesOrigin(req.headers.origin, req.headers.host);
 }
 
 function allowLogin(req) {
@@ -439,6 +440,10 @@ async function handleApi(req, res, pathname) {
         ? { authenticated: true, username: session.username, displayName: session.displayName, expiresAt: session.expiresAt }
         : { authenticated: false });
     }
+    if (req.method === "GET" && pathname === "/api/status") {
+      const settings = await readSettings();
+      return json(res, 200, { protocol: "HTTPS", listenHost: settings.listenHost, certificateSource: activeTls.status.source });
+    }
     if (req.method === "POST" && pathname === "/api/auth/login") {
       if (!requireLocalOrigin(req)) return json(res, 403, { error: "Anmeldung ist nur von der lokalen Oberfläche erlaubt." });
       if (!allowLogin(req)) return json(res, 429, { error: "Zu viele Anmeldeversuche. Bitte fünf Minuten warten." });
@@ -450,14 +455,14 @@ async function handleApi(req, res, pathname) {
       const session = { ...administrator, expiresAt: Date.now() + sessionDurationMs };
       sessions.set(token, session);
       return json(res, 200, { authenticated: true, ...session }, {
-        "Set-Cookie": `cz_session=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${sessionDurationMs / 1000}`,
+        "Set-Cookie": `__Host-apfel_session=${token}; Secure; HttpOnly; SameSite=Strict; Path=/; Max-Age=${sessionDurationMs / 1000}`,
       });
     }
     if (req.method === "POST" && pathname === "/api/auth/logout") {
       if (!requireLocalOrigin(req)) return json(res, 403, { error: "Abmeldung ist nur von der lokalen Oberfläche erlaubt." });
-      const token = cookies(req).cz_session;
+      const token = cookies(req)["__Host-apfel_session"];
       if (token) sessions.delete(token);
-      return json(res, 200, { authenticated: false }, { "Set-Cookie": "cz_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0" });
+      return json(res, 200, { authenticated: false }, { "Set-Cookie": "__Host-apfel_session=; Secure; HttpOnly; SameSite=Strict; Path=/; Max-Age=0" });
     }
     if (req.method === "GET" && pathname === "/api/containers") {
       const { containers } = await currentState();
@@ -471,12 +476,21 @@ async function handleApi(req, res, pathname) {
       const body = await readBody(req);
       let settings = await readSettings();
       if (body.volumeBasePath !== undefined) settings = await setVolumeBasePath(body.volumeBasePath);
+      let changedListenHost = null;
+      if (body.listenHost !== undefined) {
+        if (!["127.0.0.1", "0.0.0.0"].includes(body.listenHost)) return json(res, 400, { error: "Ungültige Einstellung für den Netzwerkzugriff." });
+        changedListenHost = body.listenHost !== settings.listenHost ? body.listenHost : null;
+        settings = { ...settings, listenHost: body.listenHost };
+        await saveSettings(settings);
+      }
       if (body.enabled !== undefined) {
         if (typeof body.enabled !== "boolean") return json(res, 400, { error: "Ungültige Autostart-Einstellung." });
         const current = await autostartStatus();
         if (current.enabled !== body.enabled) await setAutostart(body.enabled);
       }
-      return json(res, 200, { ...settings, ...(await autostartStatus()) });
+      json(res, 200, { ...settings, ...(await autostartStatus()) });
+      if (changedListenHost) scheduleListenHost(changedListenHost);
+      return;
     }
     if (req.method === "POST" && pathname === "/api/administration/select-volume-path") {
       if (!requireLocalOrigin(req)) return json(res, 403, { error: "Der Ordnerdialog darf nur von der lokalen Oberfläche geöffnet werden." });
@@ -484,6 +498,20 @@ async function handleApi(req, res, pathname) {
       if (!session) return json(res, 401, { error: "Bitte als macOS-Administrator anmelden." });
       const body = await readBody(req);
       return json(res, 200, await selectVolumeBasePath(body.language));
+    }
+    if (pathname === "/api/administration/certificate" && ["GET", "POST", "DELETE"].includes(req.method)) {
+      const session = currentSession(req);
+      if (!session) return json(res, 401, { error: "Bitte als macOS-Administrator anmelden." });
+      if (req.method === "GET") return json(res, 200, { certificate: activeTls.status });
+      if (!requireLocalOrigin(req)) return json(res, 403, { error: "Einstellungen dürfen nur von der lokalen Oberfläche geändert werden." });
+      if (req.method === "DELETE") {
+        activeTls = await removeCustomCertificate(root);
+      } else {
+        const body = await readBody(req);
+        activeTls = await installCustomCertificate(root, body.certificate, body.privateKey);
+      }
+      server.setSecureContext({ cert: activeTls.cert, key: activeTls.key, minVersion: "TLSv1.2" });
+      return json(res, 200, { certificate: activeTls.status });
     }
     if (pathname === "/api/administration/autostart" && ["GET", "POST"].includes(req.method)) {
       const session = currentSession(req);
@@ -502,7 +530,7 @@ async function handleApi(req, res, pathname) {
     if (req.method === "GET" && pathname === "/api/images/search") {
       const session = currentSession(req);
       if (!session) return json(res, 401, { error: "Bitte als macOS-Administrator anmelden." });
-      const url = new URL(req.url, `http://${req.headers.host || "127.0.0.1"}`);
+      const url = new URL(req.url, `https://${req.headers.host || "127.0.0.1"}`);
       return json(res, 200, { results: await searchImages(url.searchParams.get("q")) });
     }
     if (req.method === "POST" && pathname === "/api/containers") {
@@ -556,10 +584,31 @@ function serveStatic(req, res, pathname) {
   createReadStream(file).pipe(res);
 }
 
-createServer(async (req, res) => {
+let activeTls = await loadTlsCertificate(root);
+const server = createServer(activeTls, async (req, res) => {
   res.czLanguage = requestLanguage(req);
-  const url = new URL(req.url, `http://${req.headers.host || "127.0.0.1"}`);
+  const url = new URL(req.url, `https://${req.headers.host || "127.0.0.1"}`);
   if (url.pathname.startsWith("/api/")) return handleApi(req, res, url.pathname);
   if (isDev) return json(res, 404, { error: "Frontend läuft im Entwicklungsmodus auf Port 5173." });
   return serveStatic(req, res, url.pathname);
-}).listen(port, "127.0.0.1", () => console.log(`Apfel-Hafen: http://127.0.0.1:${port}`));
+});
+
+let activeListenHost = localListenHost;
+let rebindTimer;
+
+function listen(host) {
+  activeListenHost = normalizeListenHost(host);
+  server.listen(port, activeListenHost, () => console.log(`Apfel-Hafen: https://${activeListenHost}:${port}`));
+}
+
+function scheduleListenHost(host) {
+  const nextHost = normalizeListenHost(host);
+  if (nextHost === activeListenHost) return;
+  clearTimeout(rebindTimer);
+  rebindTimer = setTimeout(() => {
+    server.close(() => listen(nextHost));
+    server.closeIdleConnections?.();
+  }, 300);
+}
+
+listen((await readSettings()).listenHost);

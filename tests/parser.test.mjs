@@ -1,8 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { mkdtemp, rm, stat } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { parseContainers } from "../lib/container-parser.mjs";
 import { buildCreateArgs, imageDigestFromInspect, pinnedImage } from "../lib/recreate-args.mjs";
 import { buildNewContainerArgs, parseImageNames, safeVolumeSource, validateContainerDraft } from "../lib/container-create.mjs";
+import { normalizeListenHost, requestMatchesOrigin } from "../lib/network-settings.mjs";
+import { ensureFallbackCertificate, installCustomCertificate, loadTlsCertificate, removeCustomCertificate } from "../lib/tls-certificates.mjs";
 
 const record = {
   id: "evcc",
@@ -90,4 +95,29 @@ test("rejects occupied ports and volume path traversal", () => {
 
 test("extracts and sorts local image references", () => {
   assert.deepEqual(parseImageNames(JSON.stringify([{ name: "nginx:latest" }, { reference: "alpine:latest" }, { names: ["nginx:latest", "busybox:1"] }])), ["alpine:latest", "busybox:1", "nginx:latest"]);
+});
+
+test("validates listener settings and same-origin requests", () => {
+  assert.equal(normalizeListenHost("0.0.0.0"), "0.0.0.0");
+  assert.equal(normalizeListenHost("192.168.1.5"), "127.0.0.1");
+  assert.equal(requestMatchesOrigin("https://192.168.1.20:4173", "192.168.1.20:4173"), true);
+  assert.equal(requestMatchesOrigin("https://example.invalid:4173", "192.168.1.20:4173"), false);
+  assert.equal(requestMatchesOrigin("http://192.168.1.20:4173", "192.168.1.20:4173"), false);
+});
+
+test("generates TLS fallback and switches custom certificates safely", async () => {
+  const root = await mkdtemp(join(tmpdir(), "apfel-hafen-tls-"));
+  try {
+    const fallback = await ensureFallbackCertificate(root);
+    assert.match(fallback.cert, /BEGIN CERTIFICATE/);
+    assert.match(fallback.key, /BEGIN PRIVATE KEY/);
+    assert.equal((await loadTlsCertificate(root)).status.source, "fallback");
+    assert.equal((await stat(join(root, "data/tls/fallback-key.pem"))).mode & 0o777, 0o600);
+    assert.equal((await installCustomCertificate(root, fallback.cert, fallback.key)).status.source, "custom");
+    assert.equal((await loadTlsCertificate(root)).status.source, "custom");
+    assert.equal((await removeCustomCertificate(root)).status.source, "fallback");
+    assert.equal((await loadTlsCertificate(root)).status.source, "fallback");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });
