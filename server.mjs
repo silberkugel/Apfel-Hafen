@@ -1,10 +1,12 @@
 import { createServer } from "node:http";
 import { spawn } from "node:child_process";
 import { createReadStream, existsSync } from "node:fs";
-import { mkdir, writeFile } from "node:fs/promises";
+import { chmod, mkdir, writeFile } from "node:fs/promises";
 import { randomBytes } from "node:crypto";
 import { extname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
+import { homedir } from "node:os";
+import { disabledFromLaunchctl, launchAgentPlist, programFromLaunchctl } from "./lib/autostart.mjs";
 import { parseContainers } from "./lib/container-parser.mjs";
 import { buildCreateArgs, imageDigestFromInspect, pinnedImage, replacementSummary } from "./lib/recreate-args.mjs";
 import { localizeServerMessage, requestLanguage } from "./lib/server-i18n.mjs";
@@ -20,6 +22,11 @@ const loginAttempts = new Map();
 const sessionDurationMs = 30 * 60 * 1000;
 const serviceLabel = "de.apfel-hafen.service";
 const serviceDomain = `gui/${process.getuid()}`;
+const launchAgentPath = join(homedir(), "Library", "LaunchAgents", `${serviceLabel}.plist`);
+const serviceLogDir = join(homedir(), "Library", "Logs", "Apfel-Hafen");
+const bundledNode = join(root, "runtime", "node");
+const expectedNode = existsSync(bundledNode) ? bundledNode : process.execPath;
+const expectedServer = join(root, "server.mjs");
 
 function runProcess(program, args, input = "", timeout = 30_000) {
   return new Promise((resolve, reject) => {
@@ -36,14 +43,39 @@ function runProcess(program, args, input = "", timeout = 30_000) {
 }
 
 async function autostartStatus() {
-  const result = await runProcess("/bin/launchctl", ["print-disabled", serviceDomain]);
-  if (result.code !== 0) throw new Error(result.stderr || "Der Autostart-Status konnte nicht gelesen werden.");
-  const escapedLabel = serviceLabel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const disabled = new RegExp(`"${escapedLabel}"\\s*=>\\s*disabled`).test(result.stdout);
-  return { enabled: !disabled };
+  const disabledResult = await runProcess("/bin/launchctl", ["print-disabled", serviceDomain]);
+  if (disabledResult.code !== 0) throw new Error(disabledResult.stderr || "Der Autostart-Status konnte nicht gelesen werden.");
+  const runningResult = await runProcess("/bin/launchctl", ["print", `${serviceDomain}/${serviceLabel}`]);
+  const running = runningResult.code === 0;
+  const activeProgram = running ? programFromLaunchctl(runningResult.stdout) : "";
+  const installed = existsSync(launchAgentPath);
+  const configuredProgramResult = installed
+    ? await runProcess("/usr/bin/plutil", ["-extract", "ProgramArguments.0", "raw", launchAgentPath])
+    : { code: 1, stdout: "" };
+  const configuredProgram = configuredProgramResult.code === 0 ? configuredProgramResult.stdout : "";
+  return {
+    enabled: installed && !disabledFromLaunchctl(disabledResult.stdout, serviceLabel),
+    installed,
+    running,
+    configuredForCurrentInstallation: installed && configuredProgram === expectedNode,
+    updatePending: running && activeProgram !== expectedNode,
+  };
 }
 
 async function setAutostart(enabled) {
+  if (enabled) {
+    await mkdir(join(homedir(), "Library", "LaunchAgents"), { recursive: true });
+    await mkdir(serviceLogDir, { recursive: true });
+    await writeFile(launchAgentPath, launchAgentPlist({
+      label: serviceLabel,
+      nodePath: expectedNode,
+      serverPath: expectedServer,
+      stdoutPath: join(serviceLogDir, "service.log"),
+      stderrPath: join(serviceLogDir, "service-error.log"),
+    }), { mode: 0o644 });
+    await chmod(launchAgentPath, 0o644);
+  }
+
   const action = enabled ? "enable" : "disable";
   const result = await runProcess("/bin/launchctl", [action, `${serviceDomain}/${serviceLabel}`]);
   if (result.code !== 0) throw new Error(result.stderr || `Der Autostart konnte nicht ${enabled ? "aktiviert" : "deaktiviert"} werden.`);

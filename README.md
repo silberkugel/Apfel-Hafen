@@ -38,6 +38,18 @@ container system start
 
 ## Installation
 
+### Ready-to-use release
+
+The `Apfel-Hafen-0.2.0-macos-arm64.zip` release archive contains the required
+Node.js runtime, compiled PAM helper, and built web interface. It does not
+contain Apple containers, images, volumes, or application data. Extract the
+archive and run `Start-Apfel-Hafen.command`.
+
+Node.js, pnpm, and the Xcode Command Line Tools are only required when building
+the release itself from source.
+
+### From source
+
 1. Clone the repository and change to the project directory:
 
    ```console
@@ -66,9 +78,12 @@ container system start
 The compiled PAM helper, installed dependencies, and generated web files stay
 local and are not committed to Git.
 
+Run `pnpm release` to test and build a complete release archive under `out/`.
+Variable Apple Container configuration is not included in this archive.
+
 ## Starting and stopping
 
-Double-click `Start Apfel-Hafen.command` in Finder. The local service
+Double-click `Start-Apfel-Hafen.command` in Finder. The local service
 starts and opens the interface automatically in the browser. The Terminal
 window must remain open while the application is running.
 
@@ -81,16 +96,18 @@ pnpm start
 The interface is then available at <http://127.0.0.1:4173>.
 
 To stop the application, either close the Terminal window opened during
-startup or double-click `Stop Apfel-Hafen.command`. Do not start the
+startup or double-click `Stop-Apfel-Hafen.command`. Do not start the
 application with `sudo`, because Apple Container service belongs to the signed-in
 user.
 
 ### Optional automatic start
 
-The file `launchd/de.apfel-hafen.service.plist.example` is a LaunchAgent
-template. Before using it, replace `__PROJECT_DIR__` and `__HOME__` with the
-absolute local paths. Then install the customized file as
-`~/Library/LaunchAgents/de.apfel-hafen.service.plist`.
+After administrator sign-in, automatic start can be enabled or disabled under
+**Administration**. When enabled, Apfel-Hafen automatically installs or
+updates the LaunchAgent for the current installation directory. The display
+distinguishes automatic start at the next sign-in from the currently running
+service. An updated configuration for an already running service takes effect
+at the next sign-in.
 
 ## Usage
 
@@ -103,7 +120,7 @@ The following functions are then available:
 - start, stop, and restart containers
 - check for a newer version of the image in use
 - safely replace a container with the current image
-- change the automatic-start status of the installed LaunchAgent
+- install or update the LaunchAgent and change its automatic-start status
 
 Before replacing a container, Apfel-Hafen saves its configuration under
 `backups/<Containername>/` and verifies the new configuration with a temporary
@@ -112,7 +129,7 @@ the container's writable root filesystem may be lost during replacement.
 
 ## Uninstallation
 
-1. Stop Apfel-Hafen with `Stop Apfel-Hafen.command`.
+1. Stop Apfel-Hafen with `Stop-Apfel-Hafen.command`.
 2. If automatic start was configured, unload the LaunchAgent:
 
    ```console

@@ -39,6 +39,18 @@ container system start
 
 ## Installation
 
+### Fertige Auslieferung
+
+Das Release-Archiv `Apfel-Hafen-0.2.0-macos-arm64.zip` enthält die benötigte
+Node.js-Laufzeit, das kompilierte PAM-Hilfsprogramm und die gebaute
+Weboberfläche. Es enthält keine Apple-Container, Images, Volumes oder
+Anwendungsdaten. Archiv entpacken und `Start-Apfel-Hafen.command` starten.
+
+Node.js, pnpm und die Xcode Command Line Tools werden nur benötigt, wenn die
+Auslieferung selbst aus dem Quellcode neu gebaut werden soll.
+
+### Aus dem Quellcode
+
 1. Repository laden und in den Projektordner wechseln:
 
    ```console
@@ -67,9 +79,13 @@ container system start
 Das erzeugte PAM-Programm, die installierten Abhängigkeiten und die fertigen
 Webdateien bleiben lokal und werden nicht in Git eingecheckt.
 
+Mit `pnpm release` wird nach Tests und Build ein vollständiges Release-Archiv
+unter `out/` erzeugt. Die variable Apple-Container-Konfiguration ist kein Teil
+dieses Archivs.
+
 ## Starten und Beenden
 
-Zum Starten `Start Apfel-Hafen.command` im Finder doppelklicken. Der
+Zum Starten `Start-Apfel-Hafen.command` im Finder doppelklicken. Der
 lokale Dienst startet und öffnet die Oberfläche automatisch im Browser. Das
 Terminalfenster muss während des Betriebs geöffnet bleiben.
 
@@ -82,17 +98,18 @@ pnpm start
 Anschließend ist sie unter <http://127.0.0.1:4173> erreichbar.
 
 Zum Beenden entweder das beim Start geöffnete Terminalfenster schließen oder
-`Stop Apfel-Hafen.command` doppelklicken. Die Anwendung darf nicht
+`Stop-Apfel-Hafen.command` doppelklicken. Die Anwendung darf nicht
 mit `sudo` gestartet werden, weil Apples Containerdienst zum angemeldeten
 Benutzer gehört.
 
 ### Optionaler Autostart
 
-Unter `launchd/de.apfel-hafen.service.plist.example` liegt eine Vorlage
-für einen LaunchAgent. Vor der Verwendung müssen darin `__PROJECT_DIR__` und
-`__HOME__` durch die absoluten lokalen Pfade ersetzt werden. Die angepasste
-Datei wird anschließend als
-`~/Library/LaunchAgents/de.apfel-hafen.service.plist` installiert.
+Nach der Administratoranmeldung kann der Autostart unter **Administration**
+ein- oder ausgeschaltet werden. Beim Einschalten installiert beziehungsweise
+aktualisiert Apfel-Hafen den LaunchAgent automatisch für den aktuellen
+Installationsordner. Die Anzeige unterscheidet zwischen dem Autostart für die
+nächste Anmeldung und dem momentan laufenden Dienst. Eine aktualisierte
+Konfiguration eines bereits laufenden Dienstes gilt ab der nächsten Anmeldung.
 
 ## Handhabung
 
@@ -105,7 +122,7 @@ macOS-Administratorkonto an. Danach stehen folgende Funktionen bereit:
 - Container starten, stoppen und neu starten
 - nach einer neueren Version des verwendeten Images suchen
 - Container kontrolliert mit dem aktuellen Image ersetzen
-- Autostartstatus des installierten LaunchAgents ändern
+- LaunchAgent installieren oder aktualisieren und den Autostart ändern
 
 Vor dem Ersetzen eines Containers legt Apfel-Hafen unter
 `backups/<Containername>/` eine Sicherung seiner Konfiguration an und prüft die
@@ -116,7 +133,7 @@ verloren gehen.
 
 ## Deinstallation
 
-1. Apfel-Hafen mit `Stop Apfel-Hafen.command` beenden.
+1. Apfel-Hafen mit `Stop-Apfel-Hafen.command` beenden.
 2. Falls der Autostart eingerichtet wurde, den LaunchAgent entladen:
 
    ```console

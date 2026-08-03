@@ -37,7 +37,7 @@ function App() {
   const [loginBusy, setLoginBusy] = useState(false);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [administrationOpen, setAdministrationOpen] = useState(false);
-  const [administration, setAdministration] = useState({ loading: false, saving: false, enabled: false, error: "" });
+  const [administration, setAdministration] = useState({ loading: false, saving: false, enabled: false, installed: false, running: false, configuredForCurrentInstallation: false, updatePending: false, error: "" });
   const accountMenuRef = useRef(null);
   const t = (key, values) => translate(language, key, values);
   const labels = { start: t("start"), stop: t("stop"), restart: t("restart"), replace: t("replace") };
@@ -143,7 +143,7 @@ function App() {
       const response = await apiFetch("/api/administration/autostart");
       const data = await response.json();
       if (!response.ok) throw new Error(data.error);
-      setAdministration({ loading: false, saving: false, enabled: data.enabled, error: "" });
+      setAdministration({ loading: false, saving: false, error: "", ...data });
     } catch (err) {
       setAdministration((current) => ({ ...current, loading: false, error: err.message || t("settingLoadFailed") }));
     }
@@ -163,7 +163,7 @@ function App() {
         if (response.status === 401) setAuth({ authenticated: false });
         throw new Error(data.error);
       }
-      setAdministration({ loading: false, saving: false, enabled: data.enabled, error: "" });
+      setAdministration({ loading: false, saving: false, error: "", ...data });
     } catch (err) {
       setAdministration((current) => ({ ...current, saving: false, error: err.message || t("settingSaveFailed") }));
     }
@@ -364,6 +364,8 @@ function App() {
               <strong>{t("autoStart")}</strong>
               <span>{t("autoStartDescription")}</span>
               <p className={`setting-status ${administration.enabled ? "enabled" : ""}`}>{administration.loading ? t("statusLoading") : administration.saving ? t("settingSaving") : administration.enabled ? t("autoStartEnabled") : t("autoStartDisabled")}</p>
+              {!administration.loading && <p className={`setting-status ${administration.running ? "enabled" : ""}`}>{administration.running ? t("serviceRunning") : t("serviceStopped")}</p>}
+              {!administration.loading && administration.updatePending && <p className="setting-status">{t("autoStartUpdatePending")}</p>}
             </div>
             <button type="button" className={`switch ${administration.enabled ? "on" : ""}`} role="switch" aria-checked={administration.enabled} aria-label={t("toggleAutoStart")} disabled={administration.loading || administration.saving} onClick={changeAutostart}><i /></button>
           </section>
