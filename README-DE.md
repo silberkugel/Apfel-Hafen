@@ -42,7 +42,7 @@ container system start
 
 ### Fertige Auslieferung
 
-Das Release-Archiv `Apfel-Hafen-0.2.1-macos-arm64.zip` enthält die benötigte
+Das Release-Archiv `Apfel-Hafen-0.2.2-macos-arm64.zip` enthält die benötigte
 Node.js-Laufzeit, das kompilierte PAM-Hilfsprogramm und die gebaute
 Weboberfläche. Apple-Container, Images, Volumes und Anwendungsdaten sind nicht
 enthalten. Archiv entpacken und `Start-Apfel-Hafen.command` starten.
@@ -83,8 +83,10 @@ unter `out/` erzeugt.
 ## Starten und Beenden
 
 Zum Starten `Start-Apfel-Hafen.command` im Finder doppelklicken. Der
-lokale Dienst startet und öffnet die Oberfläche automatisch im Browser. Das
-Terminalfenster muss während des Betriebs geöffnet bleiben.
+LaunchAgent wird für das aktuelle Benutzerkonto installiert beziehungsweise
+aktualisiert, als Hintergrunddienst gestartet und die Oberfläche automatisch
+im Browser geöffnet. Das kurz geöffnete Terminalfenster kann anschließend
+geschlossen werden. Der Dienst startet bei späteren Anmeldungen automatisch.
 
 Alternativ kann die Anwendung im Projektordner gestartet werden:
 
@@ -100,17 +102,24 @@ Das Zertifikat verschlüsselt die Verbindung dennoch; für einen Zugriff ohne
 Warnung muss es auf dem Endgerät als vertrauenswürdig eingerichtet oder durch
 ein Zertifikat einer vertrauten Zertifizierungsstelle ersetzt werden.
 
-Zum Beenden entweder das beim Start geöffnete Terminalfenster schließen oder
-`Stop-Apfel-Hafen.command` doppelklicken. Die Anwendung darf nicht
-mit `sudo` gestartet werden, weil Apples Containerdienst zum angemeldeten
-Benutzer gehört.
+Zum Beenden für die aktuelle Sitzung `Stop-Apfel-Hafen.command`
+doppelklicken. Ist der Autostart aktiviert, wird der Dienst bei der nächsten
+Anmeldung wieder gestartet. Die Anwendung darf nicht mit `sudo` gestartet
+werden, weil Apples Containerdienst zum angemeldeten Benutzer gehört.
 
-### Optionaler Autostart
+### Hintergrunddienst und Autostart
 
-Nach der Administratoranmeldung kann der Autostart unter **Administration**
-ein- oder ausgeschaltet werden. Beim Einschalten installiert beziehungsweise
-aktualisiert Apfel-Hafen den LaunchAgent für den aktuellen Installationsordner.
-Die Anzeige unterscheidet Autostart und momentan geladenen Dienst.
+Der Startbefehl richtet einen benutzerbezogenen LaunchAgent unter
+`~/Library/LaunchAgents/de.apfel-hafen.service.plist` ein. Er läuft ohne
+Oberfläche, Dock-Symbol und dauerhaft geöffnetes Terminal. Nach der
+Administratoranmeldung kann der Autostart unter **Administration** ein- oder
+ausgeschaltet werden. Die Anzeige unterscheidet Autostart und momentan
+geladenen Dienst.
+
+Der Netzwerkmodus ist davon unabhängig: `127.0.0.1` stellt Apfel-Hafen nur
+auf dem Mac bereit, `0.0.0.0` zusätzlich über dessen Netzwerkadressen. Beim
+Netzwerkzugriff sollten ein vertrauenswürdiges Zertifikat und eine restriktive
+macOS-Firewall-Konfiguration verwendet werden.
 
 ## Handhabung
 

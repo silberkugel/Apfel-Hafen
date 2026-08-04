@@ -9,7 +9,7 @@ const translations = {
     total: "Gesamt", active: "Aktiv", inactive: "Inaktiv / unbekannt", search: "Container suchen", reload: "Neu laden", loading: "Lädt …",
     containers: "Container", running: "Läuft", stopped: "Gestoppt", info: "Info", start: "Starten", stop: "Stoppen", restart: "Neustart",
     check: "Update prüfen", replace: "Container ersetzen", update: "Update verfügbar", noMatches: "Keine passenden Container gefunden.", delete: "Löschen",
-    close: "Schließen", cancel: "Abbrechen", back: "Zurück", next: "Weiter", save: "Speichern", saving: "Speichert …", saved: "Einstellungen wurden gespeichert.", add: "Hinzufügen", remove: "Entfernen", selectFolder: "Auswählen …",
+    close: "Schließen", cancel: "Abbrechen", back: "Zurück", next: "Weiter", save: "Speichern", saving: "Speichert …", saved: "Einstellungen wurden gespeichert.", savedShort: "Gespeichert", add: "Hinzufügen", remove: "Entfernen", selectFolder: "Auswählen …",
     systemSettings: "Systemeinstellungen", settingsIntro: "Hier werden die Einstellungen von Apfel-Hafen verwaltet.", autostart: "Automatisch starten",
     autostartHelp: "Apfel-Hafen nach der macOS-Anmeldung automatisch starten.", autostartEnabled: "Autostart ist aktiviert", autostartDisabled: "Autostart ist deaktiviert", autostartServiceRunning: "Autostart-Dienst ist aktuell geladen", autostartServiceStopped: "Autostart-Dienst ist aktuell nicht geladen", autostartUpdatePending: "Die neue Konfiguration gilt ab der nächsten Anmeldung.", volumeBase: "Globaler Pfad für Container-Volumes",
     accessMode: "Zugriff auf die Benutzeroberfläche", accessHelp: "Festlegen, ob Apfel-Hafen nur auf diesem Mac oder zusätzlich im lokalen Netzwerk erreichbar ist.", localAccess: "Nur lokal", localAddress: "127.0.0.1 · nur dieser Mac", networkAccess: "Im Netzwerk", networkAddress: "0.0.0.0 · alle Netzwerkschnittstellen", networkWarning: "Der Netzwerkzugriff ist durch HTTPS geschützt. Damit keine Browserwarnung erscheint, müssen die Geräte dem aktiven Zertifikat vertrauen.",
@@ -21,7 +21,7 @@ const translations = {
     subpath: "Unterordner", destination: "Pfad im Container", readOnly: "Nur lesen", volumeHostPath: "Host-Pfad", variables: "Umgebungsvariablen", key: "Name", value: "Wert",
     secret: "Vertraulich", summary: "Zusammenfassung", deleteTitle: "Container endgültig löschen", typeName: "Zur Bestätigung den Containernamen eingeben",
     deleteVolumes: "Zugehörige Volume-Daten im globalen Pfad ebenfalls löschen", deleteWarning: "Diese Aktion kann nicht rückgängig gemacht werden.",
-    adminRequired: "Administrator-Anmeldung erforderlich", confirmAction: "Aktion bestätigen", language: "Sprache", noVolumes: "Keine Volumes eingebunden.",
+    adminRequired: "Administrator-Anmeldung erforderlich", confirmAction: "Aktion bestätigen", language: "Sprache", help: "Erste Schritte", noVolumes: "Keine Volumes eingebunden.",
     noPorts: "Keine Ports veröffentlicht.", cpu: "CPU-Kerne", memory: "Arbeitsspeicher", containerInfo: "Container-Informationen",
   },
   en: {
@@ -30,7 +30,7 @@ const translations = {
     total: "Total", active: "Active", inactive: "Inactive / unknown", search: "Search containers", reload: "Reload", loading: "Loading …",
     containers: "Containers", running: "Running", stopped: "Stopped", info: "Info", start: "Start", stop: "Stop", restart: "Restart",
     check: "Check update", replace: "Replace container", update: "Update available", noMatches: "No matching containers found.", delete: "Delete",
-    close: "Close", cancel: "Cancel", back: "Back", next: "Next", save: "Save", saving: "Saving …", saved: "Settings have been saved.", add: "Add", remove: "Remove", selectFolder: "Choose …",
+    close: "Close", cancel: "Cancel", back: "Back", next: "Next", save: "Save", saving: "Saving …", saved: "Settings have been saved.", savedShort: "Saved", add: "Add", remove: "Remove", selectFolder: "Choose …",
     systemSettings: "System settings", settingsIntro: "Manage Apfel-Hafen settings here.", autostart: "Start automatically",
     autostartHelp: "Start Apfel-Hafen automatically after signing in to macOS.", autostartEnabled: "Automatic start is enabled", autostartDisabled: "Automatic start is disabled", autostartServiceRunning: "Automatic-start service is currently loaded", autostartServiceStopped: "Automatic-start service is not currently loaded", autostartUpdatePending: "The new configuration takes effect after the next sign-in.", volumeBase: "Global container volume path",
     accessMode: "User interface access", accessHelp: "Choose whether Apfel-Hafen is available only on this Mac or also on the local network.", localAccess: "Local only", localAddress: "127.0.0.1 · this Mac only", networkAccess: "On the network", networkAddress: "0.0.0.0 · all network interfaces", networkWarning: "Network access is protected by HTTPS. Devices must trust the active certificate to avoid a browser warning.",
@@ -42,7 +42,7 @@ const translations = {
     subpath: "Subfolder", destination: "Path in container", readOnly: "Read only", volumeHostPath: "Host path", variables: "Environment variables", key: "Name", value: "Value",
     secret: "Sensitive", summary: "Summary", deleteTitle: "Permanently delete container", typeName: "Enter the container name to confirm",
     deleteVolumes: "Also delete associated volume data inside the global path", deleteWarning: "This action cannot be undone.",
-    adminRequired: "Administrator sign-in required", confirmAction: "Confirm action", language: "Language", noVolumes: "No volumes mounted.",
+    adminRequired: "Administrator sign-in required", confirmAction: "Confirm action", language: "Language", help: "Getting started", noVolumes: "No volumes mounted.",
     noPorts: "No ports published.", cpu: "CPU cores", memory: "Memory", containerInfo: "Container information",
   },
 };
@@ -74,6 +74,7 @@ function App() {
   const [query, setQuery] = useState("");
   const [confirm, setConfirm] = useState(null);
   const [info, setInfo] = useState(null);
+  const [helpOpen, setHelpOpen] = useState(false);
   const [updates, setUpdates] = useState({});
   const [auth, setAuth] = useState({ authenticated: false });
   const [runtimeStatus, setRuntimeStatus] = useState({ protocol: "HTTPS", listenHost: "127.0.0.1", certificateSource: "fallback" });
@@ -83,6 +84,7 @@ function App() {
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [administrationOpen, setAdministrationOpen] = useState(false);
   const [administration, setAdministration] = useState({ enabled: false, installed: false, running: false, configuredForCurrentInstallation: false, updatePending: false, volumeBasePath: "", listenHost: "127.0.0.1", loading: false, saving: false, error: "", success: "" });
+  const [administrationSaved, setAdministrationSaved] = useState(false);
   const [certificateStatus, setCertificateStatus] = useState(null);
   const [certificateUpload, setCertificateUpload] = useState({ certificate: "", privateKey: "", certificateName: "", privateKeyName: "", busy: false, error: "" });
   const [createOpen, setCreateOpen] = useState(false);
@@ -118,6 +120,14 @@ function App() {
     document.addEventListener("pointerdown", close); return () => document.removeEventListener("pointerdown", close);
   }, [accountMenuOpen]);
   useEffect(() => {
+    if (!administration.success) return;
+    const timer = setTimeout(() => {
+      setAdministration((value) => ({ ...value, success: "" }));
+      setAdministrationSaved(false);
+    }, 3000);
+    return () => clearTimeout(timer);
+  }, [administration.success]);
+  useEffect(() => {
     if (!createOpen || draft.image.trim().length < 2) { setImageResults([]); setImageSearching(false); return; }
     let active = true;
     setImageSearching(true);
@@ -148,7 +158,7 @@ function App() {
   }
   async function logout() { await fetch("/api/auth/logout", { method: "POST" }); setAuth({ authenticated: false }); setAccountMenuOpen(false); }
   async function openAdministration() {
-    setAccountMenuOpen(false); setAdministrationOpen(true); setAdministration((value) => ({ ...value, loading: true, error: "", success: "" }));
+    setAccountMenuOpen(false); setAdministrationOpen(true); setAdministrationSaved(false); setAdministration((value) => ({ ...value, loading: true, error: "", success: "" }));
     setCertificateUpload({ certificate: "", privateKey: "", certificateName: "", privateKeyName: "", busy: false, error: "" });
     try {
       const [settings, certificate] = await Promise.all([request("/api/administration/settings"), request("/api/administration/certificate")]);
@@ -158,10 +168,12 @@ function App() {
     catch (err) { setAdministration((value) => ({ ...value, loading: false, error: err.message })); }
   }
   async function saveAdministration() {
+    setAdministrationSaved(false);
     setAdministration((value) => ({ ...value, saving: true, error: "", success: "" }));
     try {
       const data = await request("/api/administration/settings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ enabled: administration.enabled, volumeBasePath: administration.volumeBasePath, listenHost: administration.listenHost }) });
       setAdministration({ ...data, loading: false, saving: false, error: "", success: t("saved") });
+      setAdministrationSaved(true);
       loadRuntimeStatus();
     } catch (err) { setAdministration((value) => ({ ...value, saving: false, error: err.message })); }
   }
@@ -264,7 +276,7 @@ function App() {
 
   return <main>
     <header className="hero"><div><p className="eyebrow">{language === "de" ? "Apfel-Hafen für Apple-Containers" : "Apfel-Hafen for Apple-Containers"}</p><h1>{headline} <em>{t("headlineEm")}</em></h1><p className="intro">{t("intro")}</p></div><div className="hero-aside">
-      <div className="account-controls"><div className="account-menu" ref={accountMenuRef}><button className={`account-button ${auth.authenticated ? "authenticated" : ""}`} onClick={auth.authenticated ? () => setAccountMenuOpen(!accountMenuOpen) : () => setLoginOpen(true)}>{auth.authenticated ? (auth.displayName || auth.username) : t("login")} {auth.authenticated && "⌄"}</button>{auth.authenticated && accountMenuOpen && <div className="account-dropdown"><button onClick={openAdministration}>{t("administration")}</button><button className="logout-item" onClick={logout}>{t("logout")}</button></div>}</div><select className="language-select" value={language} onChange={(e) => changeLanguage(e.target.value)} aria-label={t("language")}><option value="de">DE</option><option value="en">EN</option></select></div>
+      <div className="account-controls"><button className="help-button" onClick={() => setHelpOpen(true)} aria-label={t("help")} title={t("help")}>ⓘ <span>{t("help")}</span></button><div className="account-menu" ref={accountMenuRef}><button className={`account-button ${auth.authenticated ? "authenticated" : ""}`} onClick={auth.authenticated ? () => setAccountMenuOpen(!accountMenuOpen) : () => setLoginOpen(true)}>{auth.authenticated ? (auth.displayName || auth.username) : t("login")} {auth.authenticated && "⌄"}</button>{auth.authenticated && accountMenuOpen && <div className="account-dropdown"><button onClick={openAdministration}>{t("administration")}</button><button className="logout-item" onClick={logout}>{t("logout")}</button></div>}</div><select className="language-select" value={language} onChange={(e) => changeLanguage(e.target.value)} aria-label={t("language")}><option value="de">DE</option><option value="en">EN</option></select></div>
       <div className="summary"><div><strong>{containers.length}</strong><span>{t("total")}</span></div><div><strong>{running}</strong><span>{t("active")}</span></div><div><strong>{containers.length - running}</strong><span>{t("inactive")}</span></div></div>
     </div></header>
     <section className="panel"><div className="section-title container-list-header"><h2>{t("containers")}</h2><label className="search">⌕<input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t("search")} /></label><div className="toolbar-actions">{auth.authenticated && <button className="primary create-button" onClick={openCreate}>＋ {t("create")}</button>}<button className="refresh" onClick={load} disabled={loading}>↻ {loading ? t("loading") : t("reload")}</button></div></div>
@@ -274,14 +286,15 @@ function App() {
 
     {confirm && <Modal onClose={() => setConfirm(null)}><p className="eyebrow">{t("confirmAction")}</p><h2>{t(confirm.action === "replace" ? "replace" : confirm.action)}?</h2><p>„{confirm.container.name}“</p><div><button className="cancel" onClick={() => setConfirm(null)}>{t("cancel")}</button><button className="primary" onClick={execute}>{t(confirm.action === "replace" ? "replace" : confirm.action)}</button></div></Modal>}
     {info && <Modal wide onClose={() => setInfo(null)}><p className="eyebrow">{t("containerInfo")}</p><h2>{info.name}</h2><dl className="info-grid"><div><dt>{t("image")}</dt><dd>{info.image || "–"}</dd></div><div><dt>{t("memory")}</dt><dd>{formatMemory(info.memoryInBytes, language)}</dd></div><div><dt>{t("cpu")}</dt><dd>{info.cpus ?? "–"}</dd></div></dl><section className="info-section"><h3>{t("volumes")}</h3>{info.volumes.length ? <ul>{info.volumes.map((v, i) => <li key={i}><code>{v.source}</code><span>→</span><code>{v.destination}</code></li>)}</ul> : <p>{t("noVolumes")}</p>}</section><section className="info-section"><h3>{t("ports")}</h3>{info.ports.length ? <ul>{info.ports.map((p, i) => { const url = portUrl(p); return <li key={i}><code>{p.hostPort}</code><span>→</span><code>{p.containerPort}/{p.protocol}</code>{url && <a href={url} target="_blank" rel="noreferrer">↗</a>}</li>; })}</ul> : <p>{t("noPorts")}</p>}</section><div className="info-close"><button className="primary" onClick={() => setInfo(null)}>{t("close")}</button></div></Modal>}
+    {helpOpen && <Modal extraWide onClose={() => setHelpOpen(false)}><GettingStarted language={language} onClose={() => setHelpOpen(false)} /> </Modal>}
     {administrationOpen && <Modal wide onClose={() => setAdministrationOpen(false)}>
       <p className="eyebrow">{t("systemSettings")}</p><h2>{t("administration")}</h2><p>{t("settingsIntro")}</p>
-      {administration.error && <div className="login-error">{administration.error}</div>}{administration.success && <div className="setting-feedback" role="status">✓ {administration.success}</div>}
+      {administration.error && <div className="login-error">{administration.error}</div>}{administration.success && <div className="settings-toast" role="status" aria-live="polite"><span>✓</span>{administration.success}</div>}
       <section className="setting-row"><div><strong>{t("autostart")}</strong><span>{t("autostartHelp")}</span><small>{administration.enabled ? t("autostartEnabled") : t("autostartDisabled")} · {administration.running ? t("autostartServiceRunning") : t("autostartServiceStopped")}</small>{administration.updatePending && <small>{t("autostartUpdatePending")}</small>}</div><button className={`switch ${administration.enabled ? "on" : ""}`} onClick={() => setAdministration((v) => ({ ...v, enabled: !v.enabled, success: "" }))} aria-pressed={administration.enabled}><i /></button></section>
       <label className="form-field volume-setting"><span>{t("volumeBase")}</span><div className="path-selector"><input value={administration.volumeBasePath} onChange={(e) => setAdministration((v) => ({ ...v, volumeBasePath: e.target.value, success: "" }))} /><button type="button" onClick={selectVolumePath}>{t("selectFolder")}</button></div><small>{t("volumeHelp")}</small></label>
       <section className="network-setting"><strong>{t("accessMode")}</strong><span>{t("accessHelp")}</span><div className="access-options"><button className={administration.listenHost === "127.0.0.1" ? "selected" : ""} onClick={() => setAdministration((v) => ({ ...v, listenHost: "127.0.0.1", success: "" }))}><b>{t("localAccess")}</b><small>{t("localAddress")}</small></button><button className={administration.listenHost === "0.0.0.0" ? "selected" : ""} onClick={() => setAdministration((v) => ({ ...v, listenHost: "0.0.0.0", success: "" }))}><b>{t("networkAccess")}</b><small>{t("networkAddress")}</small></button></div>{administration.listenHost === "0.0.0.0" && <p className="network-warning">{t("networkWarning")}</p>}</section>
       <CertificateSetting status={certificateStatus} upload={certificateUpload} t={t} language={language} onFile={selectCertificateFile} onActivate={activateCertificate} onDelete={deleteCertificate} />
-      <div className="administration-actions"><button className="cancel" onClick={() => setAdministrationOpen(false)}>{t("cancel")}</button><button className="primary" disabled={administration.saving || administration.loading} onClick={saveAdministration}>{administration.saving ? t("saving") : t("save")}</button></div>
+      <div className="administration-actions"><button className="cancel" onClick={() => setAdministrationOpen(false)}>{t("cancel")}</button><button className={`primary save-button ${administrationSaved ? "saved" : ""}`} disabled={administration.saving || administration.loading} onClick={saveAdministration}>{administration.saving ? t("saving") : administrationSaved ? `✓ ${t("savedShort")}` : t("save")}</button></div>
     </Modal>}
     {createOpen && <Modal extraWide onClose={() => !createBusy && setCreateOpen(false)}><p className="eyebrow">{t("create")} · {createStep}/3</p><h2>{t("createTitle")}</h2><div className="step-indicator"><span className={createStep >= 1 ? "active" : ""}>{t("general")}</span><span className={createStep >= 2 ? "active" : ""}>{t("networkStorage")}</span><span className={createStep >= 3 ? "active" : ""}>{t("variablesReview")}</span></div>{createError && <div className="login-error">{createError}</div>}
       {createStep === 1 && <div className="form-grid"><label className="form-field"><span>{t("name")}</span><input autoFocus value={draft.name} onChange={(e) => setDraft((v) => ({ ...v, name: e.target.value }))} placeholder="mein-webserver" /></label><div className="form-field image-search-field"><span>{t("image")}</span><div className="image-search-control"><input value={draft.image} onChange={(e) => setDraft((v) => ({ ...v, image: e.target.value }))} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); searchImagesNow(); } }} placeholder="z. B. nginx" autoComplete="off" /><button type="button" disabled={draft.image.trim().length < 2 || imageSearching} onClick={searchImagesNow}>⌕ {imageSearching ? t("searchingImages") : t("searchImages")}</button></div><small>{t("imageHelp")}</small>{draft.image.trim().length >= 2 && <div className="image-results" role="listbox">{images.filter((image) => image.toLowerCase().includes(draft.image.toLowerCase())).slice(0, 5).map((image) => <button type="button" key={`local-${image}`} onClick={() => { setDraft((v) => ({ ...v, image })); setImageResults([]); }}><span><strong>{image}</strong><small>{t("localImage")}</small></span><b>→</b></button>)}{imageResults.map((result) => <button type="button" key={result.reference} onClick={() => { setDraft((v) => ({ ...v, image: result.reference })); setImageResults([]); }}><span><strong>{result.name}</strong><small>{result.official ? `${t("official")} · ` : ""}${result.description || result.reference}</small></span><b>→</b></button>)}{imageSearching && <p>{t("searchingImages")}</p>}{!imageSearching && !imageResults.length && !images.some((image) => image.toLowerCase().includes(draft.image.toLowerCase())) && <p>{t("noImageResults")}</p>}</div>}</div><label className="check-field"><input type="checkbox" checked={draft.start} onChange={(e) => setDraft((v) => ({ ...v, start: e.target.checked }))} /> {t("startAfter")}</label></div>}
@@ -296,6 +309,23 @@ function App() {
 
 function Modal({ children, onClose, wide = false, extraWide = false }) { return <div className="backdrop" onMouseDown={onClose}><div className={`dialog ${wide ? "info-dialog" : ""} ${extraWide ? "builder-dialog" : ""}`} role="dialog" aria-modal="true" onMouseDown={(e) => e.stopPropagation()}>{children}</div></div>; }
 function BuilderSection({ title, addLabel, onAdd, children }) { return <section className="builder-section"><div className="builder-heading"><h3>{title}</h3><button onClick={onAdd}>{addLabel}</button></div>{children}</section>; }
+function GettingStarted({ language, onClose }) {
+  const de = language === "de";
+  const steps = de ? [
+    { number: "01", title: "Maschinenraum prüfen", text: "Bevor wir ablegen, muss Apples Containerdienst laufen. Apfel-Hafen zeigt vorhandene Container erst dann zuverlässig an.", action: "Bei einer leeren oder fehlerhaften Liste: container system status prüfen und den Dienst bei Bedarf starten." },
+    { number: "02", title: "Liegeplatz festlegen", text: "Melde dich als lokaler macOS-Administrator an und öffne Administration. Prüfe den globalen Pfad für Container-Volumes. Neue verwaltete Daten legt Apfel-Hafen ausschließlich darunter ab.", action: "Empfehlung: einen dauerhaften, gut gesicherten Ordner wählen – nicht Downloads oder einen temporären Pfad." },
+    { number: "03", title: "Hafenzufahrt sichern", text: "Wähle 127.0.0.1 für Zugriff nur auf diesem Mac oder 0.0.0.0 für Geräte im lokalen Netzwerk. Prüfe außerdem Autostart und Serverzertifikat.", action: "Bei Netzwerkzugriff ein vertrauenswürdiges Zertifikat verwenden und den Port in der Firewall nur für das gewünschte Netz freigeben." },
+    { number: "04", title: "Ersten Container anlegen", text: "Klicke auf Container erstellen. Vergib einen eindeutigen Namen und suche ein Image, zum Beispiel nginx, ubuntu oder postgres. Lege anschließend Portfreigaben, Volumes und benötigte Umgebungsvariablen fest.", action: "Vor dem Erstellen die Zusammenfassung prüfen. Vertrauliche Variablen als vertraulich markieren und wichtige Daten immer in ein Volume legen." },
+    { number: "05", title: "Schiffsbetrieb beobachten", text: "Nach dem Erstellen erscheint der Container in der Übersicht. Von hier kannst du ihn starten, stoppen, neu starten, auf Image-Updates prüfen oder kontrolliert ersetzen.", action: "Der Info-Button am jeweiligen Container zeigt Image, Ressourcen, Volumes und veröffentlichte Ports." },
+  ] : [
+    { number: "01", title: "Check the engine room", text: "Before departure, Apple's container service must be running. Apfel-Hafen can only list containers reliably when it is available.", action: "If the list is empty or reports an error, check container system status and start the service if necessary." },
+    { number: "02", title: "Choose the berth", text: "Sign in as a local macOS administrator and open Administration. Verify the global container volume path. Apfel-Hafen creates new managed data only below this directory.", action: "Recommendation: choose a permanent, well-backed-up folder—not Downloads or a temporary location." },
+    { number: "03", title: "Secure the harbor entrance", text: "Choose 127.0.0.1 for this Mac only or 0.0.0.0 for devices on the local network. Also review automatic start and the server certificate.", action: "For network access, use a trusted certificate and restrict the firewall rule to the intended network." },
+    { number: "04", title: "Create the first container", text: "Select Create container. Enter a unique name and find an image such as nginx, ubuntu, or postgres. Then configure port mappings, volumes, and required environment variables.", action: "Review the summary before creation. Mark sensitive variables accordingly and always keep important data in a volume." },
+    { number: "05", title: "Watch harbor operations", text: "The new container appears in the overview. From there you can start, stop, restart, check it for image updates, or replace it safely.", action: "The Info button on each container shows its image, resources, volumes, and published ports." },
+  ];
+  return <article className="getting-started"><p className="eyebrow">{de ? "Logbuch des Hafenmeisters" : "Harbor master's logbook"}</p><h2>{de ? "Willkommen im Apfel-Hafen" : "Welcome to Apfel-Hafen"}</h2><p className="getting-started-intro">{de ? "Fünf Stationen, dann ist dein erster Apple-Container sicher vertäut." : "Five stops, and your first Apple container will be safely moored."}</p><div className="getting-started-steps">{steps.map((step) => <section key={step.number}><span>{step.number}</span><div><h3>{step.title}</h3><p>{step.text}</p><small>⚓ {step.action}</small></div></section>)}</div><div className="getting-started-finish"><strong>{de ? "Leinen los!" : "Cast off!"}</strong><p>{de ? "Beginne mit Administration und prüfe zuerst den globalen Volume-Pfad." : "Start in Administration and verify the global volume path first."}</p><button className="primary" onClick={onClose}>{de ? "Zur Übersicht" : "Back to overview"}</button></div></article>;
+}
 function CertificateSetting({ status, upload, t, language, onFile, onActivate, onDelete }) {
   const validTo = status?.validTo ? new Date(status.validTo).toLocaleDateString(language === "de" ? "de-DE" : "en-US") : "–";
   return <section className="certificate-setting"><strong>{t("certificate")}</strong><span>{t("certificateHelp")}</span>{status && <dl className="certificate-status"><div><dt>{t("certificateActive")}</dt><dd>{status.source === "custom" ? t("customCertificate") : t("automaticCertificate")}</dd></div><div><dt>{t("validUntil")}</dt><dd>{validTo}</dd></div><div><dt>{t("certificateNames")}</dt><dd>{status.subjectAltName || status.subject}</dd></div><div><dt>{t("certificateFingerprint")}</dt><dd><code>{status.fingerprint}</code></dd></div></dl>}{upload.error && <div className="login-error">{upload.error}</div>}<div className="certificate-files"><label><span>{t("certificateFile")}</span><input type="file" accept=".pem,.crt,.cer,application/x-pem-file" onChange={(event) => onFile(event.target.files?.[0], "certificate")} /><small>{upload.certificateName}</small></label><label><span>{t("privateKeyFile")}</span><input type="file" accept=".pem,.key,application/x-pem-file" onChange={(event) => onFile(event.target.files?.[0], "privateKey")} /><small>{upload.privateKeyName}</small></label></div><div className="certificate-actions"><button className="primary" disabled={upload.busy || !upload.certificate || !upload.privateKey} onClick={onActivate}>{t("activateCertificate")}</button>{status?.source === "custom" && <button className="danger" disabled={upload.busy} onClick={onDelete}>{t("removeCertificate")}</button>}</div></section>;

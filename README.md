@@ -41,7 +41,7 @@ container system start
 
 ### Ready-to-use release
 
-The `Apfel-Hafen-0.2.1-macos-arm64.zip` archive contains the required Node.js
+The `Apfel-Hafen-0.2.2-macos-arm64.zip` archive contains the required Node.js
 runtime, compiled PAM helper, and built web interface. Apple containers,
 images, volumes, and application data are not included. Extract the archive
 and run `Start-Apfel-Hafen.command`.
@@ -81,8 +81,10 @@ Run `pnpm release` to test and build a complete release archive under `out/`.
 ## Starting and stopping
 
 Double-click `Start-Apfel-Hafen.command` in Finder. The local service
-starts and opens the interface automatically in the browser. The Terminal
-window must remain open while the application is running.
+installs or updates the LaunchAgent for the current user account, starts it in
+the background, and opens the interface automatically in the browser. The
+briefly opened Terminal window can then be closed. The service starts
+automatically on subsequent sign-ins.
 
 Alternatively, start the application from the project directory:
 
@@ -98,17 +100,23 @@ The connection is still encrypted; to avoid the warning, trust the certificate
 on the client device or replace it with one issued by a trusted certificate
 authority.
 
-To stop the application, either close the Terminal window opened during
-startup or double-click `Stop-Apfel-Hafen.command`. Do not start the
-application with `sudo`, because Apple Container service belongs to the signed-in
-user.
+To stop the application for the current session, double-click
+`Stop-Apfel-Hafen.command`. If automatic start is enabled, the service starts
+again at the next sign-in. Do not start the application with `sudo`, because
+Apple Container service belongs to the signed-in user.
 
-### Optional automatic start
+### Background service and automatic start
 
-After administrator sign-in, automatic start can be enabled or disabled under
-**Administration**. When enabled, Apfel-Hafen installs or updates the
-LaunchAgent for the current installation directory. The display distinguishes
-automatic start from the currently loaded service.
+The start command installs a per-user LaunchAgent at
+`~/Library/LaunchAgents/de.apfel-hafen.service.plist`. It runs without a user
+interface, Dock icon, or permanently open Terminal. After administrator
+sign-in, automatic start can be enabled or disabled under **Administration**.
+The display distinguishes automatic start from the currently loaded service.
+
+The network mode is independent of the service lifecycle: `127.0.0.1` exposes
+Apfel-Hafen only on the Mac, while `0.0.0.0` also exposes it on the Mac's
+network addresses. Network access should be combined with a trusted
+certificate and a restrictive macOS firewall configuration.
 
 ## Usage
 

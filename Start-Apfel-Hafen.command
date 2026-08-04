@@ -21,32 +21,20 @@ if [[ ! -f "$PROJECT_DIR/dist/index.html" ]]; then
   exit 1
 fi
 
-if curl --insecure --silent --fail --max-time 1 https://127.0.0.1:4173/ >/dev/null 2>&1; then
-  open https://127.0.0.1:4173/
-  exit 0
+echo "Apfel-Hafen is starting as a background service …"
+if ! "$NODE_BIN" "$PROJECT_DIR/service-control.mjs" start; then
+  osascript -e 'display alert "Apfel-Hafen could not be started" message "See the Terminal output and ~/Library/Logs/Apfel-Hafen/service-error.log for details." as critical'
+  exit 1
 fi
-
-echo "Apfel-Hafen is starting …"
-echo "The application runs in the signed-in user's account."
-"$NODE_BIN" "$PROJECT_DIR/server.mjs" &
-SERVER_PID=$!
-
-cleanup() {
-  if kill -0 "$SERVER_PID" 2>/dev/null; then
-    kill "$SERVER_PID" 2>/dev/null || true
-  fi
-}
-trap cleanup EXIT INT TERM
 
 for attempt in {1..30}; do
   if curl --insecure --silent --fail --max-time 1 https://127.0.0.1:4173/ >/dev/null 2>&1; then
     open https://127.0.0.1:4173/
-    echo "Apfel-Hafen is running. Keep this window open."
-    wait "$SERVER_PID"
-    exit $?
+    echo "Apfel-Hafen is running in the background. This window can be closed."
+    exit 0
   fi
   sleep 0.25
 done
 
 echo "Apfel-Hafen could not be started."
-wait "$SERVER_PID"
+exit 1
