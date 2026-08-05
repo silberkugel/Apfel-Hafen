@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" role="img" aria-labelledby="title">
+  <title id="title">Apfel Hafen – kleines Symbol</title>
+  <rect width="16" height="16" rx="3" fill="#F7F4ED"/>
+  <path fill="#092E55" d="M2 3h12v2h-1v8h1v1h-4V5H6v9H2v-1h1V5H2z"/>
+  <path fill="#0C8994" d="M6 6h4v2H6z"/>
+  <path fill="#F06A24" d="M6 9h4v2H6z"/>
+  <path fill="#092E55" d="M6 12h4v2H6z"/>
+</svg>

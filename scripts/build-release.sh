@@ -69,7 +69,9 @@ ditto "Start-Apfel-Hafen.command" "$STAGE_DIR/Start-Apfel-Hafen.command"
 ditto "Stop-Apfel-Hafen.command" "$STAGE_DIR/Stop-Apfel-Hafen.command"
 ditto README-DE.md "$STAGE_DIR/README-DE.md"
 ditto README.md "$STAGE_DIR/README.md"
-ditto RELEASE-NOTES-0.2.2.md "$STAGE_DIR/RELEASE-NOTES-0.2.2.md"
+if [[ -f "RELEASE-NOTES-$VERSION.md" ]]; then
+  ditto "RELEASE-NOTES-$VERSION.md" "$STAGE_DIR/RELEASE-NOTES-$VERSION.md"
+fi
 ditto LICENSE "$STAGE_DIR/LICENSE"
 chmod 755 "$STAGE_DIR/runtime/node" "$STAGE_DIR/auth/pam-auth" \
   "$STAGE_DIR/Start-Apfel-Hafen.command" "$STAGE_DIR/Stop-Apfel-Hafen.command"

@@ -74,6 +74,8 @@ test("validates and builds arguments for a new container", () => {
   const draft = validateContainerDraft({
     name: "web-1",
     image: "docker.io/library/nginx:latest",
+    cpus: 2,
+    memoryMb: 1024,
     start: true,
     variables: [{ key: "APP_ENV", value: "production" }],
     ports: [{ hostPort: 8080, containerPort: 80, protocol: "tcp" }],
@@ -81,6 +83,7 @@ test("validates and builds arguments for a new container", () => {
   }, "/ContainerVolumes", []);
   assert.deepEqual(buildNewContainerArgs(draft), [
     "create", "--name", "web-1",
+    "--cpus", "2", "--memory", "1024M",
     "--env", "APP_ENV=production",
     "--publish", "8080:80/tcp",
     "--volume", "/ContainerVolumes/web-1/data:/data",
@@ -89,8 +92,10 @@ test("validates and builds arguments for a new container", () => {
 });
 
 test("rejects occupied ports and volume path traversal", () => {
-  assert.throws(() => validateContainerDraft({ name: "web", image: "nginx", ports: [{ hostPort: 8080, containerPort: 80, protocol: "tcp" }] }, "/Volumes", [{ hostPort: 8080, protocol: "tcp" }]), /bereits belegt/);
+  assert.throws(() => validateContainerDraft({ name: "web", image: "nginx", cpus: 2, memoryMb: 1024, ports: [{ hostPort: 8080, containerPort: 80, protocol: "tcp" }] }, "/Volumes", [{ hostPort: 8080, protocol: "tcp" }]), /bereits belegt/);
   assert.throws(() => safeVolumeSource("/Volumes", "../private"), /außerhalb/);
+  assert.throws(() => validateContainerDraft({ name: "web", image: "nginx", cpus: 0, memoryMb: 1024 }, "/Volumes"), /CPU-Anzahl/);
+  assert.throws(() => validateContainerDraft({ name: "web", image: "nginx", cpus: 2, memoryMb: 32 }, "/Volumes"), /Arbeitsspeicher/);
 });
 
 test("extracts and sorts local image references", () => {
@@ -112,7 +117,7 @@ test("generates TLS fallback and switches custom certificates safely", async () 
     assert.match(fallback.cert, /BEGIN CERTIFICATE/);
     assert.match(fallback.key, /BEGIN PRIVATE KEY/);
     assert.equal((await loadTlsCertificate(root)).status.source, "fallback");
-    assert.equal((await stat(join(root, "data/tls/fallback-key.pem"))).mode & 0o777, 0o600);
+    assert.equal((await stat(join(root, "tls/fallback-key.pem"))).mode & 0o777, 0o600);
     assert.equal((await installCustomCertificate(root, fallback.cert, fallback.key)).status.source, "custom");
     assert.equal((await loadTlsCertificate(root)).status.source, "custom");
     assert.equal((await removeCustomCertificate(root)).status.source, "fallback");

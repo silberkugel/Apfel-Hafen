@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 980 320" role="img" aria-labelledby="title desc">
+  <title id="title">Apfel Hafen</title>
+  <desc id="desc">Logo mit Hafenkran, Containerstapel und Wortmarke</desc>
+  <g transform="translate(20 20) scale(.55)">
+    <rect width="512" height="512" rx="112" fill="#F7F4ED"/>
+    <path fill="#092E55" d="M82 118h348v48H82zM92 148h42v238H92zm286 0h42v238h-42zM72 374h82v34H72zm286 0h82v34h-82zM190 91h132l31 27H159z"/>
+    <path fill="#0C8994" d="M176 188h160a14 14 0 0 1 14 14v48H162v-48a14 14 0 0 1 14-14z"/>
+    <path fill="#F06A24" d="M162 260h188v62H162z"/>
+    <path fill="#092E55" d="M162 332h188v62H162z"/>
+  </g>
+  <text x="340" y="145" fill="#092E55" font-family="Inter, Avenir Next, Helvetica Neue, sans-serif" font-size="82" font-weight="750" letter-spacing="-2">Apfel Hafen</text>
+  <text x="344" y="205" fill="#0C8994" font-family="Inter, Avenir Next, Helvetica Neue, sans-serif" font-size="27" font-weight="600" letter-spacing="3">CONTAINER MANAGEMENT</text>
+</svg>

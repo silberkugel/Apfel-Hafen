@@ -12,8 +12,10 @@ import { buildCreateArgs, imageDigestFromInspect, pinnedImage, replacementSummar
 import { buildNewContainerArgs, parseImageNames, validateContainerDraft } from "./lib/container-create.mjs";
 import { localListenHost, normalizeListenHost, requestMatchesOrigin } from "./lib/network-settings.mjs";
 import { installCustomCertificate, loadTlsCertificate, removeCustomCertificate } from "./lib/tls-certificates.mjs";
+import { prepareApplicationData } from "./lib/app-paths.mjs";
 
 const root = fileURLToPath(new URL(".", import.meta.url));
+const appPaths = await prepareApplicationData(root);
 const isDev = process.argv.includes("--dev");
 const port = Number(process.env.PORT || (isDev ? 4174 : 4173));
 const containerCli = "/usr/local/bin/container";
@@ -27,10 +29,11 @@ const serviceLabel = "de.apfel-hafen.service";
 const serviceDomain = `gui/${process.getuid()}`;
 const launchAgentPath = join(homedir(), "Library", "LaunchAgents", `${serviceLabel}.plist`);
 const serviceLogDir = join(homedir(), "Library", "Logs", "Apfel-Hafen");
+const managedByApp = process.env.APFEL_HAFEN_MANAGED_BY_APP === "1";
 const bundledNode = join(root, "runtime", "node");
 const expectedNode = existsSync(bundledNode) ? bundledNode : process.execPath;
 const expectedServer = join(root, "server.mjs");
-const settingsPath = join(root, "data", "settings.json");
+const settingsPath = appPaths.settings;
 const defaultSettings = { volumeBasePath: join(homedir(), "ContainerVolumes"), listenHost: localListenHost };
 const englishMessages = new Map([
   ["Die Administrationseinstellungen konnten nicht gelesen werden.", "Administration settings could not be read."],
@@ -108,6 +111,9 @@ function englishMessage(message) {
   return String(message)
     .replace(/^(.+) ist ungültig\.$/, "$1 is invalid.")
     .replace(/^(.+) muss zwischen 1 und 65535 liegen\.$/, "$1 must be between 1 and 65535.")
+    .replace(/^CPU-Anzahl muss zwischen 0\.1 und 256 liegen\.$/, "CPU count must be between 0.1 and 256.")
+    .replace(/^Arbeitsspeicher \(MB\) muss zwischen 64 und 1048576 liegen\.$/, "Memory (MB) must be between 64 and 1048576.")
+    .replace(/^Arbeitsspeicher \(MB\) muss eine ganze Zahl sein\.$/, "Memory (MB) must be a whole number.")
     .replace(/^Der Variablenname „(.+)“ ist ungültig oder doppelt\.$/, "The variable name ‘$1’ is invalid or duplicated.")
     .replace(/^Der Wert von „(.+)“ ist zu lang\.$/, "The value of ‘$1’ is too long.")
     .replace(/^Der externe Port (.+) ist bereits belegt\.$/, "External port $1 is already in use.")
@@ -132,7 +138,7 @@ async function readSettings() {
 }
 
 async function saveSettings(settings) {
-  await mkdir(join(root, "data"), { recursive: true });
+  await mkdir(appPaths.base, { recursive: true });
   await writeFile(settingsPath, JSON.stringify(settings, null, 2), { mode: 0o600 });
 }
 
@@ -172,6 +178,7 @@ function runProcess(program, args, input = "", timeout = 30_000) {
 }
 
 async function autostartStatus() {
+  if (managedByApp) return { enabled: true, installed: true, running: true, configuredForCurrentInstallation: true, updatePending: false, managedByApp: true };
   const disabledResult = await runProcess("/bin/launchctl", ["print-disabled", serviceDomain]);
   if (disabledResult.code !== 0) throw new Error(disabledResult.stderr || "Der Autostart-Status konnte nicht gelesen werden.");
   const runningResult = await runProcess("/bin/launchctl", ["print", `${serviceDomain}/${serviceLabel}`]);
@@ -180,10 +187,11 @@ async function autostartStatus() {
   const installed = existsSync(launchAgentPath);
   const configuredResult = installed ? await runProcess("/usr/bin/plutil", ["-extract", "ProgramArguments.0", "raw", launchAgentPath]) : { code: 1, stdout: "" };
   const configuredProgram = configuredResult.code === 0 ? configuredResult.stdout : "";
-  return { enabled: installed && !disabledFromLaunchctl(disabledResult.stdout, serviceLabel), installed, running, configuredForCurrentInstallation: installed && configuredProgram === expectedNode, updatePending: running && activeProgram !== expectedNode };
+  return { enabled: installed && !disabledFromLaunchctl(disabledResult.stdout, serviceLabel), installed, running, configuredForCurrentInstallation: installed && configuredProgram === expectedNode, updatePending: running && activeProgram !== expectedNode, managedByApp: false };
 }
 
 async function setAutostart(enabled) {
+  if (managedByApp) throw new Error("Der Hintergrunddienst wird von der Apfel-Hafen-App verwaltet.");
   if (enabled) {
     await mkdir(join(homedir(), "Library", "LaunchAgents"), { recursive: true });
     await mkdir(serviceLogDir, { recursive: true });
@@ -362,7 +370,7 @@ async function checkUpdate(name) {
 }
 
 async function saveBackup(name, record, update) {
-  const backupDir = join(root, "backups", name.replace(/[^a-z0-9._-]/gi, "_"));
+  const backupDir = join(appPaths.backups, name.replace(/[^a-z0-9._-]/gi, "_"));
   await mkdir(backupDir, { recursive: true });
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
   const backupPath = join(backupDir, `${stamp}.json`);
@@ -521,10 +529,10 @@ async function handleApi(req, res, pathname) {
       if (req.method === "GET") return json(res, 200, { certificate: activeTls.status });
       if (!requireLocalOrigin(req)) return json(res, 403, { error: "Einstellungen dürfen nur von der lokalen Oberfläche geändert werden." });
       if (req.method === "DELETE") {
-        activeTls = await removeCustomCertificate(root);
+        activeTls = await removeCustomCertificate(appPaths.base);
       } else {
         const body = await readBody(req);
-        activeTls = await installCustomCertificate(root, body.certificate, body.privateKey);
+        activeTls = await installCustomCertificate(appPaths.base, body.certificate, body.privateKey);
       }
       server.setSecureContext({ cert: activeTls.cert, key: activeTls.key, minVersion: "TLSv1.2" });
       return json(res, 200, { certificate: activeTls.status });
@@ -600,7 +608,7 @@ function serveStatic(req, res, pathname) {
   createReadStream(file).pipe(res);
 }
 
-let activeTls = await loadTlsCertificate(root);
+let activeTls = await loadTlsCertificate(appPaths.base);
 const server = createServer(activeTls, async (req, res) => {
   res.czLanguage = requestLanguage(req);
   const url = new URL(req.url, `https://${req.headers.host || "127.0.0.1"}`);
