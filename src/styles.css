@@ -34,7 +34,8 @@ h1 em { display: inline-block; font-family: Georgia, serif; font-size: .58em; fo
 .search input { border: 0; outline: 0; background: transparent; width: 100%; color: #18211e; }
 .refresh, .actions button { border: 1px solid #ced2cb; background: transparent; min-height: 42px; padding: 0 15px; color: #2d3b36; }
 .refresh:hover, .actions button:hover { background: #e8e9e3; }
-.create-button { min-height: 42px; padding: 0 16px; }
+.toolbar-actions .create-button.primary { min-height: 42px; padding: 0 16px; border: 1px solid #ced2cb; border-color: #ced2cb !important; background: transparent; color: #2d3b36; }
+.toolbar-actions .create-button.primary:hover, .toolbar-actions .create-button.primary:focus-visible { background: #e8e9e3; outline: none; }
 .actions button.replace { background: #173e33; color: #fff; border-color: #173e33; }
 .section-title { display: flex; justify-content: space-between; align-items: baseline; padding: 22px 0 15px; }
 .section-title h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; margin: 0; }
@@ -186,6 +187,14 @@ footer { max-width: 1360px; margin: 46px auto 0; padding: 24px clamp(22px, 5vw, 
 .check-field { display: block; margin-top: 20px; color: #44524c; font-size: 13px; text-align: left; }
 .check-field input { margin-right: 7px; }
 .danger-check { padding: 13px; background: #f3e8df; color: #743b2f; }
+.edit-loading { margin: 34px 0; color: #68736d; text-align: center; }
+.edit-introduction, .edit-review { display: block !important; margin-top: 26px !important; }
+.edit-introduction > p { margin: 16px 0 0; color: #52605a; font-size: 13px; line-height: 1.55; }
+.running-warning, .stopped-info, .safety-note { padding: 13px 15px; border-left: 3px solid; }
+.edit-introduction .running-warning { border-color: #b17a39; background: #f2e8d8; color: #704d22; }
+.edit-introduction .stopped-info { border-color: #73847b; background: #e9ece8; color: #44524c; }
+.safety-note { margin: 14px 0 0; border-color: #418164; background: #e2ece6; color: #285641; font-size: 12px; line-height: 1.5; }
+.downtime-check { padding: 14px; border: 1px solid #d8bd91; background: #f4ead9; color: #6b4a21; line-height: 1.45; }
 .step-indicator { display: grid !important; grid-template-columns: repeat(3, 1fr) !important; gap: 2px !important; margin: 24px 0 0 !important; }
 .step-indicator span { padding: 9px; background: #e7e8e2; color: #77807b; font: 10px ui-monospace, SFMono-Regular, monospace; text-align: center; }
 .step-indicator span.active { background: #dcebe3; color: #245843; }

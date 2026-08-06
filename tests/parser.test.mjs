@@ -4,8 +4,8 @@ import { mkdtemp, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parseContainers } from "../lib/container-parser.mjs";
-import { buildCreateArgs, imageDigestFromInspect, pinnedImage } from "../lib/recreate-args.mjs";
-import { buildNewContainerArgs, parseImageNames, safeVolumeSource, validateContainerDraft } from "../lib/container-create.mjs";
+import { buildCreateArgs, editableContainerSettings, imageDigestFromInspect, pinnedImage } from "../lib/recreate-args.mjs";
+import { buildNewContainerArgs, parseImageNames, safeVolumeSource, validateContainerDraft, validateContainerSettings } from "../lib/container-create.mjs";
 import { normalizeListenHost, requestMatchesOrigin } from "../lib/network-settings.mjs";
 import { ensureFallbackCertificate, installCustomCertificate, loadTlsCertificate, removeCustomCertificate } from "../lib/tls-certificates.mjs";
 
@@ -65,6 +65,24 @@ test("uses a temporary name for non-destructive preflight creation", () => {
   assert.deepEqual(args.slice(0, 3), ["create", "--name", "evcc-update-test"]);
 });
 
+test("extracts editable settings and applies overrides while preserving other options", () => {
+  const settings = editableContainerSettings(record);
+  assert.deepEqual(settings.variables, [{ key: "TZ", value: "Europe/Berlin" }]);
+  assert.equal(settings.memoryMb, 1024);
+  const changed = validateContainerSettings({ ...settings, cpus: 4, ports: [{ hostPort: 8080, containerPort: 80, protocol: "tcp" }] });
+  const args = buildCreateArgs(record, settings.image, null, changed);
+  assert.ok(args.includes("4"));
+  assert.ok(args.includes("1024M"));
+  assert.ok(args.includes("8080:80/tcp"));
+  assert.ok(args.includes("--network"));
+});
+
+test("rejects conflicting edit ports and relative edit volume sources", () => {
+  assert.throws(() => validateContainerSettings({ cpus: 2, memoryMb: 512, ports: [{ hostPort: 8080, containerPort: 80, protocol: "tcp" }] }, [{ hostPort: 8080, protocol: "tcp" }]), /bereits belegt/);
+  assert.throws(() => validateContainerSettings({ cpus: 2, memoryMb: 512, volumes: [{ source: "relative", destination: "/data" }] }), /Host-Pfad/);
+  assert.throws(() => validateContainerSettings({ cpus: 1.5, memoryMb: 512 }), /ganze Zahl/);
+});
+
 test("reads image digests and pins rollback references", () => {
   assert.equal(imageDigestFromInspect('[{"configuration":{"descriptor":{"digest":"sha256:new"}}}]'), "sha256:new");
   assert.equal(pinnedImage("docker.io/evcc/evcc:latest", "sha256:old"), "docker.io/evcc/evcc@sha256:old");
@@ -95,6 +113,7 @@ test("rejects occupied ports and volume path traversal", () => {
   assert.throws(() => validateContainerDraft({ name: "web", image: "nginx", cpus: 2, memoryMb: 1024, ports: [{ hostPort: 8080, containerPort: 80, protocol: "tcp" }] }, "/Volumes", [{ hostPort: 8080, protocol: "tcp" }]), /bereits belegt/);
   assert.throws(() => safeVolumeSource("/Volumes", "../private"), /außerhalb/);
   assert.throws(() => validateContainerDraft({ name: "web", image: "nginx", cpus: 0, memoryMb: 1024 }, "/Volumes"), /CPU-Anzahl/);
+  assert.throws(() => validateContainerDraft({ name: "web", image: "nginx", cpus: 1.5, memoryMb: 1024 }, "/Volumes"), /ganze Zahl/);
   assert.throws(() => validateContainerDraft({ name: "web", image: "nginx", cpus: 2, memoryMb: 32 }, "/Volumes"), /Arbeitsspeicher/);
 });
 
