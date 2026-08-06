@@ -12,6 +12,8 @@ lokalen Standardeinstellung unter `https://127.0.0.1:4173` erreichbar. Änderung
 Anmeldung eines lokalen macOS-Administrators. Das Passwort wird über PAM
 geprüft und nicht gespeichert.
 
+![Deutsche Weboberfläche von Apfel-Hafen](docs/images/apfel-hafen-ui_DE.png)
+
 ## Sprachen
 
 Die Oberfläche unterstützt Deutsch und Englisch. Beim ersten Start wird die
@@ -39,6 +41,11 @@ container system start
 ```
 
 ## Installation
+
+> **Vorschau auf 0.3.0:** Die neue native `Apfel-Hafen.app` übernimmt
+> Ersteinrichtung, LaunchAgent und Verwaltung, öffnet die Weboberfläche aber
+> weiterhin im normalen Browser. Technische Details stehen unter
+> [docs/native-app.md](docs/native-app.md).
 
 ### Fertige Auslieferung
 
@@ -142,12 +149,14 @@ macOS-Administratorkonto an. Danach stehen folgende Funktionen bereit:
   oder wieder auf das automatisch erzeugte Zertifikat zurückschalten
 - LaunchAgent installieren oder aktualisieren und den Autostart ändern
 
-Zertifikate und private Schlüssel werden unter `data/tls/` außerhalb der
-Weboberfläche gespeichert. Der private Schlüssel ist nur für den ausführenden
-Benutzer lesbar. HTTP-Verbindungen werden nicht angenommen.
+Zertifikate und private Schlüssel werden unter
+`~/Library/Application Support/Apfel-Hafen/tls/` außerhalb der Weboberfläche
+gespeichert. Der private Schlüssel ist nur für den ausführenden Benutzer
+lesbar. HTTP-Verbindungen werden nicht angenommen.
 
 Vor dem Ersetzen eines Containers legt Apfel-Hafen unter
-`backups/<Containername>/` eine Sicherung seiner Konfiguration an und prüft die
+`~/Library/Application Support/Apfel-Hafen/backups/<Containername>/` eine
+Sicherung seiner Konfiguration an und prüft die
 neue Konfiguration zunächst mit einem Probe-Container. Eingebundene
 Host-Verzeichnisse bleiben erhalten. Daten, die ausschließlich im
 beschreibbaren Root-Dateisystem des Containers liegen, können beim Ersetzen
