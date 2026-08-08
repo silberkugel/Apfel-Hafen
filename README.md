@@ -41,14 +41,14 @@ container system start
 
 ## Installation
 
-> **0.3.0 preview:** The new native `Apfel-Hafen.app` handles initial setup,
-> LaunchAgent registration, and service management while the web interface
-> continues to open in the regular browser. See
-> [docs/native-app.md](docs/native-app.md) for technical details.
+Starting with version 0.2.4, the native `Apfel-Hafen.app` handles initial setup,
+LaunchAgent registration, and service management while the web interface
+continues to open in the regular browser. See [docs/native-app.md](docs/native-app.md)
+for technical details.
 
 ### Ready-to-use release
 
-The `Apfel-Hafen-0.2.2-macos-arm64.zip` archive contains the required Node.js
+The `Apfel-Hafen-0.2.4-macos-arm64.zip` archive contains the required Node.js
 runtime, compiled PAM helper, and built web interface. Apple containers,
 images, volumes, and application data are not included. Extract the archive
 and run `Start-Apfel-Hafen.command`.

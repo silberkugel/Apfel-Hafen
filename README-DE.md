@@ -42,14 +42,13 @@ container system start
 
 ## Installation
 
-> **Vorschau auf 0.3.0:** Die neue native `Apfel-Hafen.app` übernimmt
-> Ersteinrichtung, LaunchAgent und Verwaltung, öffnet die Weboberfläche aber
-> weiterhin im normalen Browser. Technische Details stehen unter
-> [docs/native-app.md](docs/native-app.md).
+Ab Version 0.2.4 übernimmt die native `Apfel-Hafen.app` Ersteinrichtung,
+LaunchAgent und Verwaltung, öffnet die Weboberfläche aber weiterhin im normalen
+Browser. Technische Details stehen unter [docs/native-app.md](docs/native-app.md).
 
 ### Fertige Auslieferung
 
-Das Release-Archiv `Apfel-Hafen-0.2.2-macos-arm64.zip` enthält die benötigte
+Das Release-Archiv `Apfel-Hafen-0.2.4-macos-arm64.zip` enthält die benötigte
 Node.js-Laufzeit, das kompilierte PAM-Hilfsprogramm und die gebaute
 Weboberfläche. Apple-Container, Images, Volumes und Anwendungsdaten sind nicht
 enthalten. Archiv entpacken und `Start-Apfel-Hafen.command` starten.
