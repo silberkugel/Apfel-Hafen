@@ -11,6 +11,8 @@
 /coverage/
 /dist/
 /out/
+/.build/
+/app-out/
 /.release-cache/
 
 # Umgebungsvariablen und Schluessel

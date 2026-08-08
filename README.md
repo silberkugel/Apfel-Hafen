@@ -11,6 +11,8 @@ local configuration at `https://127.0.0.1:4173`.
 Changing containers requires signing in with a local macOS administrator
 account. The password is verified through PAM and is not stored.
 
+![Apfel-Hafen web interface in English](docs/images/apfel-hafen-ui_EN.png)
+
 ## Languages
 
 The interface supports German and English. On first launch, it uses the
@@ -39,9 +41,14 @@ container system start
 
 ## Installation
 
+Starting with version 0.2.4, the native `Apfel-Hafen.app` handles initial setup,
+LaunchAgent registration, and service management while the web interface
+continues to open in the regular browser. See [docs/native-app.md](docs/native-app.md)
+for technical details.
+
 ### Ready-to-use release
 
-The `Apfel-Hafen-0.2.2-macos-arm64.zip` archive contains the required Node.js
+The `Apfel-Hafen-0.2.4-macos-arm64.zip` archive contains the required Node.js
 runtime, compiled PAM helper, and built web interface. Apple containers,
 images, volumes, and application data are not included. Extract the archive
 and run `Start-Apfel-Hafen.command`.
@@ -139,12 +146,14 @@ The following functions are then available:
 - install or update the LaunchAgent and change its automatic-start status
 
 Certificates and private keys are stored outside the web interface under
-`data/tls/`. The private key is readable only by the account running the
-service. Plain HTTP connections are not accepted.
+`~/Library/Application Support/Apfel-Hafen/tls/`. The private key is readable
+only by the account running the service. Plain HTTP connections are not
+accepted.
 
 Before replacing a container, Apfel-Hafen saves its configuration under
-`backups/<Containername>/` and verifies the new configuration with a temporary
-test container. Mounted host directories remain intact. Data stored only in
+`~/Library/Application Support/Apfel-Hafen/backups/<Containername>/` and
+verifies the new configuration with a temporary test container. Mounted host
+directories remain intact. Data stored only in
 the container's writable root filesystem may be lost during replacement.
 
 ## Uninstallation

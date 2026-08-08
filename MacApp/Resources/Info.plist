@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleDevelopmentRegion</key>
+  <string>de</string>
+	<key>CFBundleExecutable</key>
+	<string>ApfelHafen</string>
+	<key>CFBundleIconFile</key>
+	<string>ApfelHafen</string>
+	<key>CFBundleIdentifier</key>
+  <string>de.apfel-hafen.app</string>
+  <key>CFBundleName</key>
+  <string>Apfel-Hafen</string>
+  <key>CFBundleDisplayName</key>
+  <string>Apfel-Hafen</string>
+  <key>CFBundlePackageType</key>
+  <string>APPL</string>
+  <key>CFBundleShortVersionString</key>
+  <string>__VERSION__</string>
+  <key>CFBundleVersion</key>
+  <string>__BUILD__</string>
+  <key>LSMinimumSystemVersion</key>
+  <string>14.0</string>
+  <key>NSHumanReadableCopyright</key>
+  <string>Apfel-Hafen contributors</string>
+  <key>NSPrincipalClass</key>
+  <string>NSApplication</string>
+</dict>
+</plist>

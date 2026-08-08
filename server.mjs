@@ -8,12 +8,14 @@ import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { disabledFromLaunchctl, launchAgentPlist, programFromLaunchctl } from "./lib/autostart.mjs";
 import { parseContainers } from "./lib/container-parser.mjs";
-import { buildCreateArgs, imageDigestFromInspect, pinnedImage, replacementSummary } from "./lib/recreate-args.mjs";
-import { buildNewContainerArgs, parseImageNames, validateContainerDraft } from "./lib/container-create.mjs";
+import { buildCreateArgs, editableContainerSettings, imageDigestFromInspect, pinnedImage, replacementSummary } from "./lib/recreate-args.mjs";
+import { buildNewContainerArgs, parseImageNames, validateContainerDraft, validateContainerSettings } from "./lib/container-create.mjs";
 import { localListenHost, normalizeListenHost, requestMatchesOrigin } from "./lib/network-settings.mjs";
 import { installCustomCertificate, loadTlsCertificate, removeCustomCertificate } from "./lib/tls-certificates.mjs";
+import { prepareApplicationData } from "./lib/app-paths.mjs";
 
 const root = fileURLToPath(new URL(".", import.meta.url));
+const appPaths = await prepareApplicationData(root);
 const isDev = process.argv.includes("--dev");
 const port = Number(process.env.PORT || (isDev ? 4174 : 4173));
 const containerCli = "/usr/local/bin/container";
@@ -27,10 +29,11 @@ const serviceLabel = "de.apfel-hafen.service";
 const serviceDomain = `gui/${process.getuid()}`;
 const launchAgentPath = join(homedir(), "Library", "LaunchAgents", `${serviceLabel}.plist`);
 const serviceLogDir = join(homedir(), "Library", "Logs", "Apfel-Hafen");
+const managedByApp = process.env.APFEL_HAFEN_MANAGED_BY_APP === "1";
 const bundledNode = join(root, "runtime", "node");
 const expectedNode = existsSync(bundledNode) ? bundledNode : process.execPath;
 const expectedServer = join(root, "server.mjs");
-const settingsPath = join(root, "data", "settings.json");
+const settingsPath = appPaths.settings;
 const defaultSettings = { volumeBasePath: join(homedir(), "ContainerVolumes"), listenHost: localListenHost };
 const englishMessages = new Map([
   ["Die Administrationseinstellungen konnten nicht gelesen werden.", "Administration settings could not be read."],
@@ -52,6 +55,9 @@ const englishMessages = new Map([
   ["Container wurde erstellt und gestartet.", "The container was created and started."],
   ["Container wurde erstellt.", "The container was created."],
   ["Container ist nicht mehr vorhanden.", "The container no longer exists."],
+  ["Image-Referenz fehlt.", "The image reference is missing."],
+  ["Einstellungen wurden übernommen.", "Settings were applied."],
+  ["Einstellungen wurden übernommen und der Container wurde wieder gestartet.", "Settings were applied and the container was started again."],
   ["Der eingegebene Containername stimmt nicht überein.", "The entered container name does not match."],
   ["Container und zugehörige Volume-Daten wurden gelöscht.", "The container and its associated volume data were deleted."],
   ["Container wurde gelöscht.", "The container was deleted."],
@@ -68,6 +74,7 @@ const englishMessages = new Map([
   ["Abmeldung ist nur von der lokalen Oberfläche erlaubt.", "Sign-out is allowed only from the local interface."],
   ["Bitte als macOS-Administrator anmelden.", "Sign in as a macOS administrator."],
   ["Einstellungen dürfen nur von der lokalen Oberfläche geändert werden.", "Settings may be changed only from the local interface."],
+  ["Container-Einstellungen dürfen nur von der lokalen Oberfläche geändert werden.", "Container settings may be changed only from the local interface."],
   ["Ungültige Autostart-Einstellung.", "Invalid automatic startup setting."],
   ["Der Ordnerdialog darf nur von der lokalen Oberfläche geöffnet werden.", "The folder picker may be opened only from the local interface."],
   ["Container dürfen nur von der lokalen Oberfläche erstellt werden.", "Containers may be created only from the local interface."],
@@ -94,6 +101,7 @@ const englishMessages = new Map([
   ["Als Protokoll ist nur TCP oder UDP erlaubt.", "Only TCP or UDP is allowed as a protocol."],
   ["Es sind höchstens 16 Volumes erlaubt.", "A maximum of 16 volumes is allowed."],
   ["Der Container-Pfad eines Volumes muss absolut sein.", "A volume's container path must be absolute."],
+  ["Der Host-Pfad eines Volumes muss absolut sein.", "A volume's host path must be absolute."],
   ["Ein Container mit diesem Namen ist bereits vorhanden.", "A container with this name already exists."],
 ]);
 
@@ -108,6 +116,10 @@ function englishMessage(message) {
   return String(message)
     .replace(/^(.+) ist ungültig\.$/, "$1 is invalid.")
     .replace(/^(.+) muss zwischen 1 und 65535 liegen\.$/, "$1 must be between 1 and 65535.")
+    .replace(/^CPU-Anzahl muss zwischen 1 und 256 liegen\.$/, "CPU count must be between 1 and 256.")
+    .replace(/^CPU-Anzahl muss eine ganze Zahl sein\.$/, "CPU count must be a whole number.")
+    .replace(/^Arbeitsspeicher \(MB\) muss zwischen 64 und 1048576 liegen\.$/, "Memory (MB) must be between 64 and 1048576.")
+    .replace(/^Arbeitsspeicher \(MB\) muss eine ganze Zahl sein\.$/, "Memory (MB) must be a whole number.")
     .replace(/^Der Variablenname „(.+)“ ist ungültig oder doppelt\.$/, "The variable name ‘$1’ is invalid or duplicated.")
     .replace(/^Der Wert von „(.+)“ ist zu lang\.$/, "The value of ‘$1’ is too long.")
     .replace(/^Der externe Port (.+) ist bereits belegt\.$/, "External port $1 is already in use.")
@@ -116,6 +128,9 @@ function englishMessage(message) {
     .replace(/^Ersetzen wurde vor dem Löschen abgebrochen: /, "Replacement was canceled before deletion: ")
     .replace(/^Das Update ist fehlgeschlagen; der vorherige Container wurde automatisch wiederhergestellt\. Ursache: /, "The update failed; the previous container was restored automatically. Cause: ")
     .replace(/^Update und automatische Wiederherstellung sind fehlgeschlagen\. Die Sicherung liegt unter (.+)\. Ursache: /, "The update and automatic recovery failed. The backup is stored at $1. Cause: ")
+    .replace(/^Änderung wurde vor dem Löschen abgebrochen: /, "The change was canceled before deletion: ")
+    .replace(/^Die Änderung ist fehlgeschlagen; der vorherige Container wurde automatisch wiederhergestellt\. Ursache: /, "The change failed; the previous container was automatically restored. Cause: ")
+    .replace(/^Änderung und automatische Wiederherstellung sind fehlgeschlagen\. Die Sicherung liegt unter (.+)\. Ursache: /, "The change and automatic recovery failed. The backup is stored at $1. Cause: ")
     .replace(/^Der Autostart konnte nicht aktiviert werden\./, "Automatic startup could not be enabled.")
     .replace(/^Der Autostart konnte nicht deaktiviert werden\./, "Automatic startup could not be disabled.")
     .replace(/ Prüfe mit „container system status“, ob der Apple-Containerdienst für diesen Benutzer läuft\.$/, " Check with ‘container system status’ whether the Apple container service is running for this user.");
@@ -132,7 +147,7 @@ async function readSettings() {
 }
 
 async function saveSettings(settings) {
-  await mkdir(join(root, "data"), { recursive: true });
+  await mkdir(appPaths.base, { recursive: true });
   await writeFile(settingsPath, JSON.stringify(settings, null, 2), { mode: 0o600 });
 }
 
@@ -172,6 +187,7 @@ function runProcess(program, args, input = "", timeout = 30_000) {
 }
 
 async function autostartStatus() {
+  if (managedByApp) return { enabled: true, installed: true, running: true, configuredForCurrentInstallation: true, updatePending: false, managedByApp: true };
   const disabledResult = await runProcess("/bin/launchctl", ["print-disabled", serviceDomain]);
   if (disabledResult.code !== 0) throw new Error(disabledResult.stderr || "Der Autostart-Status konnte nicht gelesen werden.");
   const runningResult = await runProcess("/bin/launchctl", ["print", `${serviceDomain}/${serviceLabel}`]);
@@ -180,10 +196,11 @@ async function autostartStatus() {
   const installed = existsSync(launchAgentPath);
   const configuredResult = installed ? await runProcess("/usr/bin/plutil", ["-extract", "ProgramArguments.0", "raw", launchAgentPath]) : { code: 1, stdout: "" };
   const configuredProgram = configuredResult.code === 0 ? configuredResult.stdout : "";
-  return { enabled: installed && !disabledFromLaunchctl(disabledResult.stdout, serviceLabel), installed, running, configuredForCurrentInstallation: installed && configuredProgram === expectedNode, updatePending: running && activeProgram !== expectedNode };
+  return { enabled: installed && !disabledFromLaunchctl(disabledResult.stdout, serviceLabel), installed, running, configuredForCurrentInstallation: installed && configuredProgram === expectedNode, updatePending: running && activeProgram !== expectedNode, managedByApp: false };
 }
 
 async function setAutostart(enabled) {
+  if (managedByApp) throw new Error("Der Hintergrunddienst wird von der Apfel-Hafen-App verwaltet.");
   if (enabled) {
     await mkdir(join(homedir(), "Library", "LaunchAgents"), { recursive: true });
     await mkdir(serviceLogDir, { recursive: true });
@@ -362,7 +379,7 @@ async function checkUpdate(name) {
 }
 
 async function saveBackup(name, record, update) {
-  const backupDir = join(root, "backups", name.replace(/[^a-z0-9._-]/gi, "_"));
+  const backupDir = join(appPaths.backups, name.replace(/[^a-z0-9._-]/gi, "_"));
   await mkdir(backupDir, { recursive: true });
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
   const backupPath = join(backupDir, `${stamp}.json`);
@@ -414,6 +431,61 @@ async function replaceContainer(name) {
     } catch (rollbackError) {
       if (/automatisch wiederhergestellt/.test(rollbackError.message)) throw rollbackError;
       throw new Error(`Update und automatische Wiederherstellung sind fehlgeschlagen. Die Sicherung liegt unter ${backupPath}. Ursache: ${rollbackError.message}`);
+    }
+  }
+}
+
+async function containerSettings(name) {
+  const { records } = await currentState();
+  const record = records.find((item) => String(item.id || item.configuration?.id) === name);
+  if (!record) throw new Error("Container ist nicht mehr vorhanden.");
+  return editableContainerSettings(record);
+}
+
+async function updateContainerSettings(name, input) {
+  const { records, containers } = await currentState();
+  const selected = containers.find((container) => container.name === name);
+  const record = records.find((item) => String(item.id || item.configuration?.id) === name);
+  if (!selected || !record) throw new Error("Container ist nicht mehr vorhanden.");
+
+  const occupiedPorts = containers.filter((container) => container.name !== name).flatMap((container) => container.ports);
+  const settings = validateContainerSettings(input, occupiedPorts);
+  const wasRunning = selected.status === "running";
+  const image = String(record.configuration?.image?.reference || selected.image || "");
+  if (!image) throw new Error("Image-Referenz fehlt.");
+  const backupPath = await saveBackup(name, record, { type: "settings", requestedAt: new Date().toISOString() });
+  const createArgs = buildCreateArgs(record, image, null, settings);
+  const rollbackImage = selected.digest ? pinnedImage(image, selected.digest) : image;
+  const rollbackArgs = buildCreateArgs(record, rollbackImage);
+  const preflightName = `${name}-settings-test-${Date.now().toString(36)}`;
+  const preflightArgs = buildCreateArgs(record, image, preflightName, settings);
+  let oldDeleted = false;
+
+  try {
+    try {
+      await runContainer(preflightArgs, 600_000);
+      await runContainer(["delete", preflightName]);
+    } catch (preflightError) {
+      await runContainer(["delete", "--force", preflightName]).catch(() => {});
+      throw new Error(`Sicherheitsprüfung fehlgeschlagen; der vorhandene Container wurde nicht verändert. Ursache: ${preflightError.message}`);
+    }
+    if (wasRunning) await runContainer(["stop", name]);
+    await runContainer(["delete", name]);
+    oldDeleted = true;
+    await runContainer(createArgs, 600_000);
+    if (wasRunning) await runContainer(["start", name]);
+    checkedUpdates.delete(name);
+    return { message: wasRunning ? "Einstellungen wurden übernommen und der Container wurde wieder gestartet." : "Einstellungen wurden übernommen.", backupPath };
+  } catch (changeError) {
+    if (!oldDeleted) throw new Error(`Änderung wurde vor dem Löschen abgebrochen: ${changeError.message}`);
+    try {
+      await runContainer(["delete", "--force", name]).catch(() => {});
+      await runContainer(rollbackArgs, 600_000);
+      if (wasRunning) await runContainer(["start", name]);
+      throw new Error(`Die Änderung ist fehlgeschlagen; der vorherige Container wurde automatisch wiederhergestellt. Ursache: ${changeError.message}`);
+    } catch (rollbackError) {
+      if (/automatisch wiederhergestellt/.test(rollbackError.message)) throw rollbackError;
+      throw new Error(`Änderung und automatische Wiederherstellung sind fehlgeschlagen. Die Sicherung liegt unter ${backupPath}. Ursache: ${rollbackError.message}`);
     }
   }
 }
@@ -521,10 +593,10 @@ async function handleApi(req, res, pathname) {
       if (req.method === "GET") return json(res, 200, { certificate: activeTls.status });
       if (!requireLocalOrigin(req)) return json(res, 403, { error: "Einstellungen dürfen nur von der lokalen Oberfläche geändert werden." });
       if (req.method === "DELETE") {
-        activeTls = await removeCustomCertificate(root);
+        activeTls = await removeCustomCertificate(appPaths.base);
       } else {
         const body = await readBody(req);
-        activeTls = await installCustomCertificate(root, body.certificate, body.privateKey);
+        activeTls = await installCustomCertificate(appPaths.base, body.certificate, body.privateKey);
       }
       server.setSecureContext({ cert: activeTls.cert, key: activeTls.key, minVersion: "TLSv1.2" });
       return json(res, 200, { certificate: activeTls.status });
@@ -554,6 +626,15 @@ async function handleApi(req, res, pathname) {
       const session = currentSession(req);
       if (!session) return json(res, 401, { error: "Bitte als macOS-Administrator anmelden." });
       return json(res, 201, { ok: true, ...(await createContainer(await readBody(req))) });
+    }
+    const settingsMatch = pathname.match(/^\/api\/containers\/([^/]+)\/settings$/);
+    if (settingsMatch && ["GET", "PUT"].includes(req.method)) {
+      const session = currentSession(req);
+      if (!session) return json(res, 401, { error: "Bitte als macOS-Administrator anmelden." });
+      const name = decodeURIComponent(settingsMatch[1]);
+      if (req.method === "GET") return json(res, 200, { settings: await containerSettings(name) });
+      if (!requireLocalOrigin(req)) return json(res, 403, { error: "Container-Einstellungen dürfen nur von der lokalen Oberfläche geändert werden." });
+      return json(res, 200, { ok: true, ...(await updateContainerSettings(name, await readBody(req))) });
     }
     const deleteMatch = pathname.match(/^\/api\/containers\/([^/]+)$/);
     if (req.method === "DELETE" && deleteMatch) {
@@ -600,7 +681,7 @@ function serveStatic(req, res, pathname) {
   createReadStream(file).pipe(res);
 }
 
-let activeTls = await loadTlsCertificate(root);
+let activeTls = await loadTlsCertificate(appPaths.base);
 const server = createServer(activeTls, async (req, res) => {
   res.czLanguage = requestLanguage(req);
   const url = new URL(req.url, `https://${req.headers.host || "127.0.0.1"}`);
