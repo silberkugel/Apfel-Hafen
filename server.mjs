@@ -10,6 +10,7 @@ import { disabledFromLaunchctl, launchAgentPlist, programFromLaunchctl } from ".
 import { parseContainers } from "./lib/container-parser.mjs";
 import { buildCreateArgs, editableContainerSettings, imageDigestFromInspect, pinnedImage, replacementSummary } from "./lib/recreate-args.mjs";
 import { buildNewContainerArgs, parseImageNames, validateContainerDraft, validateContainerSettings } from "./lib/container-create.mjs";
+import { shouldPullImage, updateCheckResult } from "./lib/image-policy.mjs";
 import { localListenHost, normalizeListenHost, requestMatchesOrigin } from "./lib/network-settings.mjs";
 import { installCustomCertificate, loadTlsCertificate, removeCustomCertificate } from "./lib/tls-certificates.mjs";
 import { prepareApplicationData } from "./lib/app-paths.mjs";
@@ -62,6 +63,9 @@ const englishMessages = new Map([
   ["Container und zugehörige Volume-Daten wurden gelöscht.", "The container and its associated volume data were deleted."],
   ["Container wurde gelöscht.", "The container was deleted."],
   ["Image-Referenz oder bisheriger Digest fehlt.", "The image reference or previous digest is missing."],
+  ["Lokales Image ist aktuell. Für lokale Images ist kein Registry-Update verfügbar.", "The local image is current. Registry updates are not available for local images."],
+  ["Kein Image-Update verfügbar.", "No image update is available."],
+  ["Image-Update ist verfügbar.", "An image update is available."],
   ["Bitte das Update unmittelbar vor dem Ersetzen erneut prüfen.", "Check for updates again immediately before replacing the container."],
   ["Für diesen Container wurde kein neuer Image-Digest gefunden.", "No new image digest was found for this container."],
   ["Der Container hat sich seit der Update-Prüfung verändert. Bitte erneut prüfen.", "The container changed after the update check. Check again."],
@@ -364,10 +368,13 @@ async function checkUpdate(name) {
   if (!selected || !record) throw new Error("Container ist nicht mehr vorhanden.");
   if (!selected.image || !selected.digest) throw new Error("Image-Referenz oder bisheriger Digest fehlt.");
 
-  await runContainer(["image", "pull", "--progress", "plain", selected.image], 600_000);
+  if (shouldPullImage(selected.image)) {
+    await runContainer(["image", "pull", "--progress", "plain", selected.image], 600_000);
+  }
   const newDigest = imageDigestFromInspect(await runContainer(["image", "inspect", selected.image]));
+  const check = updateCheckResult(selected.image, selected.digest, newDigest);
   const result = {
-    available: newDigest !== selected.digest,
+    ...check,
     oldDigest: selected.digest,
     newDigest,
     image: selected.image,

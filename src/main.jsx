@@ -284,7 +284,7 @@ function App() {
   async function checkUpdate(container) {
     if (!auth.authenticated) return setLoginOpen(true);
     setBusy(`${container.name}:update-check`);
-    try { const data = await request(`/api/containers/${encodeURIComponent(container.name)}/update-check`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: container.name }) }); setUpdates((value) => ({ ...value, [container.name]: data })); }
+    try { const data = await request(`/api/containers/${encodeURIComponent(container.name)}/update-check`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: container.name }) }); setUpdates((value) => ({ ...value, [container.name]: data })); setNotice(data.message || "OK"); }
     catch (err) { setError(err.message); } finally { setBusy(""); }
   }
   async function removeContainer() {
