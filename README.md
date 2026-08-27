@@ -48,10 +48,11 @@ for technical details.
 
 ### Ready-to-use release
 
-The `Apfel-Hafen-0.2.5-macos-arm64.zip` archive contains the required Node.js
-runtime, compiled PAM helper, and built web interface. Apple containers,
-images, volumes, and application data are not included. Extract the archive
-and run `Start-Apfel-Hafen.command`.
+Every release contains the `Apfel-Hafen-0.2.5-macos-arm64.zip` server archive
+and the native macOS app as `Apfel-Hafen-0.2.5-macos-arm64.dmg`. The archive
+contains the required Node.js runtime, compiled PAM helper, and built web
+interface. Apple containers, images, volumes, and application data are not
+included. Extract the archive and run `Start-Apfel-Hafen.command`.
 
 ### From source
 
@@ -83,7 +84,8 @@ and run `Start-Apfel-Hafen.command`.
 The compiled PAM helper, installed dependencies, and generated web files stay
 local and are not committed to Git.
 
-Run `pnpm release` to test and build a complete release archive under `out/`.
+Run `pnpm release` to test and build the complete release archive and native
+macOS app DMG under `out/`.
 
 ## Starting and stopping
 

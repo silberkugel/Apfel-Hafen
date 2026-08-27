@@ -48,10 +48,11 @@ Browser. Technische Details stehen unter [docs/native-app.md](docs/native-app.md
 
 ### Fertige Auslieferung
 
-Das Release-Archiv `Apfel-Hafen-0.2.5-macos-arm64.zip` enthält die benötigte
-Node.js-Laufzeit, das kompilierte PAM-Hilfsprogramm und die gebaute
-Weboberfläche. Apple-Container, Images, Volumes und Anwendungsdaten sind nicht
-enthalten. Archiv entpacken und `Start-Apfel-Hafen.command` starten.
+Jedes Release enthält das Server-Archiv `Apfel-Hafen-0.2.5-macos-arm64.zip`
+und die native macOS-App als `Apfel-Hafen-0.2.5-macos-arm64.dmg`. Das Archiv
+enthält die benötigte Node.js-Laufzeit, das kompilierte PAM-Hilfsprogramm und
+die gebaute Weboberfläche. Apple-Container, Images, Volumes und Anwendungsdaten
+sind nicht enthalten. Archiv entpacken und `Start-Apfel-Hafen.command` starten.
 
 ### Aus dem Quellcode
 
@@ -83,8 +84,8 @@ enthalten. Archiv entpacken und `Start-Apfel-Hafen.command` starten.
 Das erzeugte PAM-Programm, die installierten Abhängigkeiten und die fertigen
 Webdateien bleiben lokal und werden nicht in Git eingecheckt.
 
-Mit `pnpm release` wird nach Tests und Build ein vollständiges Release-Archiv
-unter `out/` erzeugt.
+Mit `pnpm release` werden nach Tests und Build das vollständige Release-Archiv
+und das DMG der nativen macOS-App unter `out/` erzeugt.
 
 ## Starten und Beenden
 

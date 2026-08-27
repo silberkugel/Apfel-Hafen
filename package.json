@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "node server.mjs --dev",
     "build": "vite build",
-    "release": "zsh scripts/build-release.sh",
+    "release": "zsh scripts/build-dmg.sh",
     "app": "zsh scripts/build-app.sh",
     "dmg": "zsh scripts/build-dmg.sh",
     "start": "node server.mjs",
