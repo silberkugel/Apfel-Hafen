@@ -33,6 +33,17 @@ test("global help opens the harbor master getting-started guide", async () => {
   assert.match(source, /Container erstellen/);
 });
 
+test("administrator can open a running container console in Terminal", async () => {
+  const server = await readFile(new URL("../server.mjs", import.meta.url), "utf8");
+  const client = await readFile(new URL("../src/main.jsx", import.meta.url), "utf8");
+
+  assert.match(server, /consoleMatch = pathname\.match/);
+  assert.match(server, /containerCli\)} exec --interactive --tty/);
+  assert.match(server, /tell application "Terminal" to do script/);
+  assert.match(client, /openContainerConsole/);
+  assert.match(client, /t\("console"\)/);
+});
+
 test("native app bundle uses SMAppService without an embedded browser", async () => {
   const service = await readFile(new URL("../MacApp/Sources/ApfelHafen/Services/ServiceManager.swift", import.meta.url), "utf8");
   const app = await readFile(new URL("../MacApp/Sources/ApfelHafen/App/ApfelHafenApp.swift", import.meta.url), "utf8");

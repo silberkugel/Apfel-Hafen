@@ -67,6 +67,8 @@ const englishMessages = new Map([
   ["Der Container hat sich seit der Update-Prüfung verändert. Bitte erneut prüfen.", "The container changed after the update check. Check again."],
   ["Container wurde mit dem neuen Image neu erstellt.", "The container was recreated with the new image."],
   ["Container wurde neu gestartet.", "The container was restarted."],
+  ["Die Konsole ist nur für laufende Container verfügbar.", "The console is only available for running containers."],
+  ["Das Terminalfenster konnte nicht geöffnet werden.", "The Terminal window could not be opened."],
   ["Unbekannte Aktion.", "Unknown action."],
   ["Anfrage ist zu groß.", "The request is too large."],
   ["Anmeldung ist nur von der lokalen Oberfläche erlaubt.", "Sign-in is allowed only from the local interface."],
@@ -170,6 +172,22 @@ async function selectVolumeBasePath(language) {
     throw new Error(result.stderr || "Der Ordnerdialog konnte nicht geöffnet werden.");
   }
   return { canceled: false, volumeBasePath: resolve(result.stdout) };
+}
+
+function shellQuote(value) {
+  return `'${String(value).replace(/'/g, `'\\''`)}'`;
+}
+
+async function openContainerConsole(name) {
+  const { containers } = await currentState();
+  const selected = containers.find((container) => container.name === name);
+  if (!selected) throw new Error("Container ist nicht mehr vorhanden.");
+  if (selected.status !== "running") throw new Error("Die Konsole ist nur für laufende Container verfügbar.");
+
+  const command = `exec ${shellQuote(containerCli)} exec --interactive --tty ${shellQuote(name)} /bin/sh`;
+  const result = await runProcess("/usr/bin/osascript", ["-e", `tell application "Terminal" to do script ${JSON.stringify(command)}`]);
+  if (result.code !== 0) throw new Error(result.stderr || "Das Terminalfenster konnte nicht geöffnet werden.");
+  return { message: "Terminalfenster wurde geöffnet." };
 }
 
 function runProcess(program, args, input = "", timeout = 30_000) {
@@ -626,6 +644,16 @@ async function handleApi(req, res, pathname) {
       const session = currentSession(req);
       if (!session) return json(res, 401, { error: "Bitte als macOS-Administrator anmelden." });
       return json(res, 201, { ok: true, ...(await createContainer(await readBody(req))) });
+    }
+    const consoleMatch = pathname.match(/^\/api\/containers\/([^/]+)\/console$/);
+    if (req.method === "POST" && consoleMatch) {
+      if (!requireLocalOrigin(req)) return json(res, 403, { error: "Verwaltungsaktionen sind nur von der lokalen Oberfläche erlaubt." });
+      const session = currentSession(req);
+      if (!session) return json(res, 401, { error: "Bitte als macOS-Administrator anmelden." });
+      const name = decodeURIComponent(consoleMatch[1]);
+      const body = await readBody(req);
+      if (body.name !== name) return json(res, 400, { error: "Containername stimmt nicht überein." });
+      return json(res, 200, { ok: true, ...(await openContainerConsole(name)) });
     }
     const settingsMatch = pathname.match(/^\/api\/containers\/([^/]+)\/settings$/);
     if (settingsMatch && ["GET", "PUT"].includes(req.method)) {
