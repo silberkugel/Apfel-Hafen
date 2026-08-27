@@ -184,7 +184,9 @@ async function openContainerConsole(name) {
   if (!selected) throw new Error("Container ist nicht mehr vorhanden.");
   if (selected.status !== "running") throw new Error("Die Konsole ist nur für laufende Container verfügbar.");
 
-  const command = `exec ${shellQuote(containerCli)} exec --interactive --tty ${shellQuote(name)} /bin/sh`;
+  const consoleCommands = ["sh", "bash", "ash", "python3", "python"];
+  const execPrefix = `${shellQuote(containerCli)} exec --interactive --tty ${shellQuote(name)}`;
+  const command = `${consoleCommands.map((executable) => `exec ${execPrefix} ${shellQuote(executable)}`).join(" || ")} || { printf '%s\\n' 'Dieser Container enthält keine unterstützte interaktive Shell oder Python-Konsole.'; exit 1; }`;
   const result = await runProcess("/usr/bin/osascript", ["-e", `tell application "Terminal" to do script ${JSON.stringify(command)}`]);
   if (result.code !== 0) throw new Error(result.stderr || "Das Terminalfenster konnte nicht geöffnet werden.");
   return { message: "Terminalfenster wurde geöffnet." };

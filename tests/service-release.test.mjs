@@ -38,7 +38,8 @@ test("administrator can open a running container console in Terminal", async () 
   const client = await readFile(new URL("../src/main.jsx", import.meta.url), "utf8");
 
   assert.match(server, /consoleMatch = pathname\.match/);
-  assert.match(server, /containerCli\)} exec --interactive --tty/);
+  assert.match(server, /consoleCommands = \["sh", "bash", "ash", "python3", "python"\]/);
+  assert.match(server, /exec --interactive --tty/);
   assert.match(server, /tell application "Terminal" to do script/);
   assert.match(client, /openContainerConsole/);
   assert.match(client, /t\("console"\)/);
