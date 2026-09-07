@@ -10,14 +10,20 @@ import { disabledFromLaunchctl, launchAgentPlist, programFromLaunchctl } from ".
 import { parseContainers } from "./lib/container-parser.mjs";
 import { buildCreateArgs, editableContainerSettings, imageDigestFromInspect, pinnedImage, replacementSummary } from "./lib/recreate-args.mjs";
 import { buildNewContainerArgs, parseImageNames, validateContainerDraft, validateContainerSettings } from "./lib/container-create.mjs";
+import { dockerHubSearchInput, shouldPullImage, updateCheckResult } from "./lib/image-policy.mjs";
 import { localListenHost, normalizeListenHost, requestMatchesOrigin } from "./lib/network-settings.mjs";
 import { installCustomCertificate, loadTlsCertificate, removeCustomCertificate } from "./lib/tls-certificates.mjs";
 import { prepareApplicationData } from "./lib/app-paths.mjs";
+import { cleanupLaunchdService, createLaunchdService, executeLaunchdAction, findLaunchdService, listLaunchdServices } from "./lib/launchd-services.mjs";
 
 const root = fileURLToPath(new URL(".", import.meta.url));
 const appPaths = await prepareApplicationData(root);
 const isDev = process.argv.includes("--dev");
 const port = Number(process.env.PORT || (isDev ? 4174 : 4173));
+const sessionCookieName = isDev ? "apfel_dev_session" : "__Host-apfel_session";
+const sessionCookieAttributes = isDev
+  ? "HttpOnly; SameSite=Strict; Path=/"
+  : "Secure; HttpOnly; SameSite=Strict; Path=/";
 const containerCli = "/usr/local/bin/container";
 const pamHelper = join(root, "auth", "pam-auth");
 const checkedUpdates = new Map();
@@ -62,6 +68,9 @@ const englishMessages = new Map([
   ["Container und zugehörige Volume-Daten wurden gelöscht.", "The container and its associated volume data were deleted."],
   ["Container wurde gelöscht.", "The container was deleted."],
   ["Image-Referenz oder bisheriger Digest fehlt.", "The image reference or previous digest is missing."],
+  ["Lokales Image ist aktuell. Für lokale Images ist kein Registry-Update verfügbar.", "The local image is current. Registry updates are not available for local images."],
+  ["Kein Image-Update verfügbar.", "No image update is available."],
+  ["Image-Update ist verfügbar.", "An image update is available."],
   ["Bitte das Update unmittelbar vor dem Ersetzen erneut prüfen.", "Check for updates again immediately before replacing the container."],
   ["Für diesen Container wurde kein neuer Image-Digest gefunden.", "No new image digest was found for this container."],
   ["Der Container hat sich seit der Update-Prüfung verändert. Bitte erneut prüfen.", "The container changed after the update check. Check again."],
@@ -241,7 +250,7 @@ function cookies(req) {
 }
 
 function currentSession(req) {
-  const token = cookies(req)["__Host-apfel_session"];
+  const token = cookies(req)[sessionCookieName];
   const session = token ? sessions.get(token) : null;
   if (!session || session.expiresAt <= Date.now()) {
     if (token) sessions.delete(token);
@@ -251,6 +260,7 @@ function currentSession(req) {
 }
 
 function requireLocalOrigin(req) {
+  if (isDev && req.headers.origin === "http://127.0.0.1:5173") return true;
   return requestMatchesOrigin(req.headers.origin, req.headers.host);
 }
 
@@ -311,18 +321,25 @@ async function imageNames() {
 }
 
 async function searchImages(query) {
-  const cleanQuery = String(query || "").trim().toLowerCase();
-  if (cleanQuery.length < 2 || cleanQuery.length > 80 || !/^[a-z0-9._/ -]+$/.test(cleanQuery)) return [];
-  const cached = imageSearchCache.get(cleanQuery);
+  const input = dockerHubSearchInput(query);
+  if (!input) return [];
+  const cacheKey = `${input.query}|${input.directReference?.reference || ""}`;
+  const cached = imageSearchCache.get(cacheKey);
   if (cached && Date.now() - cached.createdAt < 5 * 60 * 1000) return cached.results;
 
   const url = new URL("https://hub.docker.com/v2/search/repositories/");
-  url.searchParams.set("query", cleanQuery);
+  url.searchParams.set("query", input.query);
   url.searchParams.set("page_size", "12");
-  const response = await fetch(url, { headers: { Accept: "application/json", "User-Agent": "Apfel-Hafen/1.0" }, signal: AbortSignal.timeout(8_000) });
-  if (!response.ok) throw new Error("Die öffentliche Image-Suche ist zurzeit nicht erreichbar.");
-  const body = await response.json();
-  const results = (Array.isArray(body.results) ? body.results : []).map((item) => {
+  let body;
+  try {
+    const response = await fetch(url, { headers: { Accept: "application/json", "User-Agent": "Apfel-Hafen/1.0" }, signal: AbortSignal.timeout(8_000) });
+    if (!response.ok) throw new Error("Die öffentliche Image-Suche ist zurzeit nicht erreichbar.");
+    body = await response.json();
+  } catch (error) {
+    if (input.directReference) return [input.directReference];
+    throw error;
+  }
+  const searchedResults = (Array.isArray(body.results) ? body.results : []).map((item) => {
     const rawName = String(item.repo_name || [item.namespace, item.name].filter(Boolean).join("/") || item.name || "").replace(/^docker\.io\//, "");
     const official = Boolean(item.is_official) || rawName.startsWith("library/");
     const repository = official ? rawName.replace(/^library\//, "") : rawName;
@@ -335,7 +352,10 @@ async function searchImages(query) {
       stars: Number(item.star_count || 0),
     };
   }).filter((item) => item.name && !item.name.includes(" "));
-  imageSearchCache.set(cleanQuery, { createdAt: Date.now(), results });
+  const results = input.directReference
+    ? [input.directReference, ...searchedResults.filter((item) => item.reference !== input.directReference.reference)]
+    : searchedResults;
+  imageSearchCache.set(cacheKey, { createdAt: Date.now(), results });
   return results;
 }
 
@@ -384,10 +404,13 @@ async function checkUpdate(name) {
   if (!selected || !record) throw new Error("Container ist nicht mehr vorhanden.");
   if (!selected.image || !selected.digest) throw new Error("Image-Referenz oder bisheriger Digest fehlt.");
 
-  await runContainer(["image", "pull", "--progress", "plain", selected.image], 600_000);
+  if (shouldPullImage(selected.image)) {
+    await runContainer(["image", "pull", "--progress", "plain", selected.image], 600_000);
+  }
   const newDigest = imageDigestFromInspect(await runContainer(["image", "inspect", selected.image]));
+  const check = updateCheckResult(selected.image, selected.digest, newDigest);
   const result = {
-    available: newDigest !== selected.digest,
+    ...check,
     oldDigest: selected.digest,
     newDigest,
     image: selected.image,
@@ -563,18 +586,41 @@ async function handleApi(req, res, pathname) {
       const session = { ...administrator, expiresAt: Date.now() + sessionDurationMs };
       sessions.set(token, session);
       return json(res, 200, { authenticated: true, ...session }, {
-        "Set-Cookie": `__Host-apfel_session=${token}; Secure; HttpOnly; SameSite=Strict; Path=/; Max-Age=${sessionDurationMs / 1000}`,
+        "Set-Cookie": `${sessionCookieName}=${token}; ${sessionCookieAttributes}; Max-Age=${sessionDurationMs / 1000}`,
       });
     }
     if (req.method === "POST" && pathname === "/api/auth/logout") {
       if (!requireLocalOrigin(req)) return json(res, 403, { error: "Abmeldung ist nur von der lokalen Oberfläche erlaubt." });
-      const token = cookies(req)["__Host-apfel_session"];
+      const token = cookies(req)[sessionCookieName];
       if (token) sessions.delete(token);
-      return json(res, 200, { authenticated: false }, { "Set-Cookie": "__Host-apfel_session=; Secure; HttpOnly; SameSite=Strict; Path=/; Max-Age=0" });
+      return json(res, 200, { authenticated: false }, { "Set-Cookie": `${sessionCookieName}=; ${sessionCookieAttributes}; Max-Age=0` });
     }
     if (req.method === "GET" && pathname === "/api/containers") {
       const { containers } = await currentState();
       return json(res, 200, { containers, refreshedAt: new Date().toISOString() });
+    }
+    if (req.method === "GET" && pathname === "/api/services/launchd") {
+      const services = await listLaunchdServices({ runProcess });
+      return json(res, 200, { services, refreshedAt: new Date().toISOString() });
+    }
+    if (req.method === "POST" && pathname === "/api/services/launchd") {
+      if (!requireLocalOrigin(req)) return json(res, 403, { error: "LaunchD-Dienste dürfen nur von der lokalen Oberfläche erstellt werden." });
+      const session = currentSession(req);
+      if (!session) return json(res, 401, { error: "Bitte als macOS-Administrator anmelden." });
+      return json(res, 201, { ok: true, ...(await createLaunchdService(await readBody(req), runProcess)) });
+    }
+    const launchdMatch = pathname.match(/^\/api\/services\/launchd\/([^/]+)\/(start|stop|restart|cleanup)$/);
+    if (req.method === "POST" && launchdMatch) {
+      if (!requireLocalOrigin(req)) return json(res, 403, { error: "LaunchD-Dienste dürfen nur von der lokalen Oberfläche verwaltet werden." });
+      const session = currentSession(req);
+      if (!session) return json(res, 401, { error: "Bitte als macOS-Administrator anmelden." });
+      const id = decodeURIComponent(launchdMatch[1]);
+      const services = await listLaunchdServices({ runProcess });
+      const service = findLaunchdService(services, id);
+      if (!service) return json(res, 404, { error: "LaunchD-Dienst ist nicht mehr vorhanden. Bitte Liste aktualisieren." });
+      if (launchdMatch[2] === "cleanup") return json(res, 200, { ok: true, ...(await cleanupLaunchdService(service, runProcess)) });
+      const message = await executeLaunchdAction(service, launchdMatch[2], runProcess);
+      return json(res, 200, { ok: true, message });
     }
     if (pathname === "/api/administration/settings" && ["GET", "POST"].includes(req.method)) {
       const session = currentSession(req);

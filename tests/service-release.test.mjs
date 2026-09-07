@@ -45,6 +45,14 @@ test("administrator can open a running container console in Terminal", async () 
   assert.match(client, /t\("console"\)/);
 });
 
+test("Hermes images receive safe gateway defaults", async () => {
+  const source = await readFile(new URL("../src/main.jsx", import.meta.url), "utf8");
+  assert.match(source, /nousresearch\\\/hermes-agent/);
+  assert.match(source, /containerPort = 8642/);
+  assert.match(source, /destination = "\/opt\/data"/);
+  assert.match(source, /\["gateway", "run"\]/);
+});
+
 test("native app bundle uses SMAppService without an embedded browser", async () => {
   const service = await readFile(new URL("../MacApp/Sources/ApfelHafen/Services/ServiceManager.swift", import.meta.url), "utf8");
   const app = await readFile(new URL("../MacApp/Sources/ApfelHafen/App/ApfelHafenApp.swift", import.meta.url), "utf8");

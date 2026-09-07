@@ -48,8 +48,8 @@ for technical details.
 
 ### Ready-to-use release
 
-Every release contains the `Apfel-Hafen-0.2.5-macos-arm64.zip` server archive
-and the native macOS app as `Apfel-Hafen-0.2.5-macos-arm64.dmg`. The archive
+Every release contains the `Apfel-Hafen-0.2.6-macos-arm64.zip` server archive
+and the native macOS app as `Apfel-Hafen-0.2.6-macos-arm64.dmg`. The archive
 contains the required Node.js runtime, compiled PAM helper, and built web
 interface. Apple containers, images, volumes, and application data are not
 included. Extract the archive and run `Start-Apfel-Hafen.command`.
