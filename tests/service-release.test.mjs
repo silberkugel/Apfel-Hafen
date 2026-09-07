@@ -33,7 +33,7 @@ test("global help opens the harbor master getting-started guide", async () => {
   assert.match(source, /Container erstellen/);
 });
 
-test("administrator can open a running container console in Terminal", async () => {
+test("administrator can open a container console and inspect startup logs", async () => {
   const server = await readFile(new URL("../server.mjs", import.meta.url), "utf8");
   const client = await readFile(new URL("../src/main.jsx", import.meta.url), "utf8");
 
@@ -43,6 +43,32 @@ test("administrator can open a running container console in Terminal", async () 
   assert.match(server, /tell application "Terminal" to do script/);
   assert.match(client, /openContainerConsole/);
   assert.match(client, /t\("console"\)/);
+  assert.match(server, /logsMatch = pathname\.match/);
+  assert.match(server, /\["logs", "--boot", name\]/);
+  assert.match(server, /\["logs", "-n", "200", name\]/);
+  assert.match(client, /openContainerLogs/);
+  assert.match(client, /t\("logs"\)/);
+  assert.match(client, /className="log-sections"/);
+  assert.match(client, /containerLogs\.bootLog/);
+  assert.match(client, /containerLogs\.outputLog/);
+});
+
+test("failed first starts remain inspectable and MQTT gets useful defaults", async () => {
+  const server = await readFile(new URL("../server.mjs", import.meta.url), "utf8");
+  const client = await readFile(new URL("../src/main.jsx", import.meta.url), "utf8");
+
+  assert.match(server, /Er bleibt für die Fehlersuche erhalten/);
+  assert.doesNotMatch(server, /catch \(error\) \{\s*await runContainer\(\["delete", "--force", draft\.name\]/);
+  assert.match(client, /mosquitto\|mqtt/);
+  assert.match(client, /containerPort = 1883/);
+  assert.match(client, /destination = "\/mosquitto\/data"/);
+});
+
+test("successful container replacement clears the checked update state", async () => {
+  const client = await readFile(new URL("../src/main.jsx", import.meta.url), "utf8");
+
+  assert.match(client, /if \(action === "replace"\) \{\s*setUpdates/);
+  assert.match(client, /delete next\[container\.name\]/);
 });
 
 test("native app bundle uses SMAppService without an embedded browser", async () => {

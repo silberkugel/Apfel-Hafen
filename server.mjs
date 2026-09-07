@@ -125,6 +125,7 @@ function englishMessage(message) {
     .replace(/^Der Variablenname „(.+)“ ist ungültig oder doppelt\.$/, "The variable name ‘$1’ is invalid or duplicated.")
     .replace(/^Der Wert von „(.+)“ ist zu lang\.$/, "The value of ‘$1’ is too long.")
     .replace(/^Der externe Port (.+) ist bereits belegt\.$/, "External port $1 is already in use.")
+    .replace(/^Der Container konnte nicht gestartet werden\. Er bleibt für die Fehlersuche erhalten; öffne beim Container „Startprotokoll anzeigen“\. Ursache: /, "The container could not be started. It remains available for troubleshooting; choose ‘Show startup log’ for the container. Cause: ")
     .replace(/^Der Container konnte nicht gestartet werden und wurde zurückgerollt\. Ursache: /, "The container could not be started and was rolled back. Cause: ")
     .replace(/^Sicherheitsprüfung fehlgeschlagen; der vorhandene Container wurde nicht verändert\. Ursache: /, "The safety check failed; the existing container was not changed. Cause: ")
     .replace(/^Ersetzen wurde vor dem Löschen abgebrochen: /, "Replacement was canceled before deletion: ")
@@ -190,6 +191,21 @@ async function openContainerConsole(name) {
   const result = await runProcess("/usr/bin/osascript", ["-e", `tell application "Terminal" to do script ${JSON.stringify(command)}`]);
   if (result.code !== 0) throw new Error(result.stderr || "Das Terminalfenster konnte nicht geöffnet werden.");
   return { message: "Terminalfenster wurde geöffnet." };
+}
+
+async function openContainerLogs(name) {
+  const { containers } = await currentState();
+  if (!containers.some((container) => container.name === name)) throw new Error("Container ist nicht mehr vorhanden.");
+
+  const [bootResult, outputResult] = await Promise.allSettled([
+    runContainer(["logs", "--boot", name]),
+    runContainer(["logs", "-n", "200", name]),
+  ]);
+  const readableLog = (result) => {
+    const value = result.status === "fulfilled" ? result.value : result.reason?.message;
+    return String(value || "").slice(-100_000);
+  };
+  return { name, bootLog: readableLog(bootResult), outputLog: readableLog(outputResult) };
 }
 
 function runProcess(program, args, input = "", timeout = 30_000) {
@@ -283,7 +299,7 @@ async function authenticateAdministrator(username, password) {
   return { username, displayName: displayName || username };
 }
 
-function runContainer(args, timeout = 120_000) {
+function runContainerOnce(args, timeout = 120_000) {
   return new Promise((resolve, reject) => {
     const child = spawn(containerCli, args, { shell: false, timeout });
     let stdout = "";
@@ -299,6 +315,26 @@ function runContainer(args, timeout = 120_000) {
       else reject(new Error((stderr || stdout || `container wurde mit Status ${code} beendet.`).trim()));
     });
   });
+}
+
+let containerSystemRecovery = null;
+
+async function recoverContainerSystem() {
+  if (!containerSystemRecovery) {
+    containerSystemRecovery = runContainerOnce(["system", "start"], 120_000)
+      .finally(() => { containerSystemRecovery = null; });
+  }
+  return containerSystemRecovery;
+}
+
+async function runContainer(args, timeout = 120_000) {
+  try {
+    return await runContainerOnce(args, timeout);
+  } catch (error) {
+    if (args[0] === "system" || !/apiserver|connection|connect|not running|operation not permitted/i.test(error.message)) throw error;
+    await recoverContainerSystem();
+    return runContainerOnce(args, timeout);
+  }
 }
 
 async function currentState() {
@@ -350,8 +386,7 @@ async function createContainer(input) {
   try {
     if (draft.start) await runContainer(["start", draft.name]);
   } catch (error) {
-    await runContainer(["delete", "--force", draft.name]).catch(() => {});
-    throw new Error(`Der Container konnte nicht gestartet werden und wurde zurückgerollt. Ursache: ${error.message}`);
+    throw new Error(`Der Container konnte nicht gestartet werden. Er bleibt für die Fehlersuche erhalten; öffne beim Container „Startprotokoll anzeigen“. Ursache: ${error.message}`);
   }
   return { message: draft.start ? "Container wurde erstellt und gestartet." : "Container wurde erstellt." };
 }
@@ -656,6 +691,16 @@ async function handleApi(req, res, pathname) {
       const body = await readBody(req);
       if (body.name !== name) return json(res, 400, { error: "Containername stimmt nicht überein." });
       return json(res, 200, { ok: true, ...(await openContainerConsole(name)) });
+    }
+    const logsMatch = pathname.match(/^\/api\/containers\/([^/]+)\/logs$/);
+    if (req.method === "POST" && logsMatch) {
+      if (!requireLocalOrigin(req)) return json(res, 403, { error: "Verwaltungsaktionen sind nur von der lokalen Oberfläche erlaubt." });
+      const session = currentSession(req);
+      if (!session) return json(res, 401, { error: "Bitte als macOS-Administrator anmelden." });
+      const name = decodeURIComponent(logsMatch[1]);
+      const body = await readBody(req);
+      if (body.name !== name) return json(res, 400, { error: "Containername stimmt nicht überein." });
+      return json(res, 200, { ok: true, ...(await openContainerLogs(name)) });
     }
     const settingsMatch = pathname.match(/^\/api\/containers\/([^/]+)\/settings$/);
     if (settingsMatch && ["GET", "PUT"].includes(req.method)) {

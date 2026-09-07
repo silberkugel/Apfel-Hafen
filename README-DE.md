@@ -48,8 +48,8 @@ Browser. Technische Details stehen unter [docs/native-app.md](docs/native-app.md
 
 ### Fertige Auslieferung
 
-Jedes Release enthält das Server-Archiv `Apfel-Hafen-0.2.5-macos-arm64.zip`
-und die native macOS-App als `Apfel-Hafen-0.2.5-macos-arm64.dmg`. Das Archiv
+Jedes Release enthält das Server-Archiv `Apfel-Hafen-0.2.6-macos-arm64.zip`
+und die native macOS-App als `Apfel-Hafen-0.2.6-macos-arm64.dmg`. Das Archiv
 enthält die benötigte Node.js-Laufzeit, das kompilierte PAM-Hilfsprogramm und
 die gebaute Weboberfläche. Apple-Container, Images, Volumes und Anwendungsdaten
 sind nicht enthalten. Archiv entpacken und `Start-Apfel-Hafen.command` starten.
@@ -137,6 +137,8 @@ Für schreibende Aktionen melden Sie sich mit einem lokalen
 macOS-Administratorkonto an. Danach stehen folgende Funktionen bereit:
 
 - Container starten, stoppen und neu starten
+- Start- und Containerprotokolle direkt in der Oberfläche anzeigen
+- für laufende Container eine interaktive Konsole im Terminal öffnen
 - Container mit Image-Suche, Portfreigaben, Volumes und Umgebungsvariablen erstellen
 - Container nach Eingabe ihres Namens sicher löschen; optional können die von
   Apfel-Hafen verwalteten Volume-Daten mitgelöscht werden
