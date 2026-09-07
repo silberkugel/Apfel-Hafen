@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { isLocalImageReference, shouldPullImage, updateCheckResult } from "../lib/image-policy.mjs";
+import { dockerHubSearchInput, isLocalImageReference, shouldPullImage, updateCheckResult } from "../lib/image-policy.mjs";
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 
@@ -17,6 +17,23 @@ test("keeps registry pulls enabled for public images", () => {
   assert.equal(isLocalImageReference("docker.io/library/nginx:latest"), false);
   assert.equal(shouldPullImage("docker.io/library/nginx:latest"), true);
   assert.equal(shouldPullImage("ghcr.io/example/app:latest"), true);
+});
+
+test("normalizes full Docker Hub references for search", () => {
+  assert.deepEqual(dockerHubSearchInput("docker.io/nousresearch/hermes-agent:latest"), {
+    query: "nousresearch/hermes-agent",
+    directReference: {
+      name: "nousresearch/hermes-agent",
+      reference: "docker.io/nousresearch/hermes-agent:latest",
+      description: "Direkte Image-Referenz",
+      official: false,
+      direct: true,
+      pulls: 0,
+      stars: 0,
+    },
+  });
+  assert.equal(dockerHubSearchInput("https://docker.io/library/nginx:1.27")?.directReference?.reference, "docker.io/library/nginx:1.27");
+  assert.equal(dockerHubSearchInput("invalid image"), null);
 });
 
 test("reports an unchanged local image with a visible local-image message", () => {
