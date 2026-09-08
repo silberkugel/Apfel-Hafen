@@ -14,7 +14,7 @@ import { dockerHubSearchInput, shouldPullImage, updateCheckResult } from "./lib/
 import { localListenHost, normalizeListenHost, requestMatchesOrigin } from "./lib/network-settings.mjs";
 import { installCustomCertificate, loadTlsCertificate, removeCustomCertificate } from "./lib/tls-certificates.mjs";
 import { prepareApplicationData } from "./lib/app-paths.mjs";
-import { cleanupLaunchdService, createLaunchdService, executeLaunchdAction, findLaunchdService, listLaunchdServices } from "./lib/launchd-services.mjs";
+import { cleanupLaunchdService, createLaunchdService, executeLaunchdAction, findLaunchdService, listLaunchdServices, updateLaunchdService } from "./lib/launchd-services.mjs";
 
 const root = fileURLToPath(new URL(".", import.meta.url));
 const appPaths = await prepareApplicationData(root);
@@ -118,6 +118,7 @@ const englishMessages = new Map([
   ["Es sind höchstens 32 kalenderbasierte Startzeiten erlaubt.", "A maximum of 32 calendar-based start times is allowed."],
   ["Der Wochentag der Startzeit ist ungültig.", "The start time weekday is invalid."],
   ["Kalenderbasierte Startzeiten benötigen eine gültige Uhrzeit.", "Calendar-based start times require a valid time."],
+  ["Dieser LaunchAgent enthält Startregeln, die nicht verlustfrei bearbeitet werden können.", "This LaunchAgent contains launch rules that cannot be edited without data loss."],
 ]);
 
 function requestLanguage(req) {
@@ -647,6 +648,16 @@ async function handleApi(req, res, pathname) {
       const session = currentSession(req);
       if (!session) return json(res, 401, { error: "Bitte als macOS-Administrator anmelden." });
       return json(res, 201, { ok: true, ...(await createLaunchdService(await readBody(req), runProcess)) });
+    }
+    const launchdEditMatch = pathname.match(/^\/api\/services\/launchd\/([^/]+)$/);
+    if (req.method === "PUT" && launchdEditMatch) {
+      if (!requireLocalOrigin(req)) return json(res, 403, { error: "LaunchD-Dienste dürfen nur von der lokalen Oberfläche bearbeitet werden." });
+      const session = currentSession(req);
+      if (!session) return json(res, 401, { error: "Bitte als macOS-Administrator anmelden." });
+      const services = await listLaunchdServices({ runProcess });
+      const service = findLaunchdService(services, decodeURIComponent(launchdEditMatch[1]));
+      if (!service) return json(res, 404, { error: "LaunchD-Dienst ist nicht mehr vorhanden. Bitte Liste aktualisieren." });
+      return json(res, 200, { ok: true, ...(await updateLaunchdService(service, await readBody(req), runProcess)) });
     }
     const launchdMatch = pathname.match(/^\/api\/services\/launchd\/([^/]+)\/(start|stop|restart|cleanup)$/);
     if (req.method === "POST" && launchdMatch) {

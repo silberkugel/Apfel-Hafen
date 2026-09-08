@@ -1,6 +1,21 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { cleanupLaunchdService, createLaunchdService, executeLaunchdAction, launchAgentPlistFromDraft, launchdDomain, normalizeLaunchdService, parseLaunchctlStatus, validateLaunchdDraft } from "../lib/launchd-services.mjs";
+import { execFile } from "node:child_process";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { promisify } from "node:util";
+import { cleanupLaunchdService, createLaunchdService, executeLaunchdAction, launchAgentPlistFromDraft, launchdDomain, normalizeLaunchdService, parseLaunchctlStatus, updateLaunchdService, validateLaunchdDraft } from "../lib/launchd-services.mjs";
+
+const execFileAsync = promisify(execFile);
+const runProcess = async (program, args) => {
+  try {
+    const { stdout, stderr } = await execFileAsync(program, args);
+    return { code: 0, stdout, stderr };
+  } catch (error) {
+    return { code: error.code || 1, stdout: error.stdout || "", stderr: error.stderr || error.message };
+  }
+};
 
 test("parses launchctl state without mistaking an exited job for running", () => {
   assert.deepEqual(parseLaunchctlStatus("state = running\n\tpid = 481\n\tlast exit code = 0"), { loaded: true, state: "running", running: true, pid: 481, lastExitStatus: 0 });
@@ -14,6 +29,7 @@ test("normalizes plist metadata and limits management to the user scope", () => 
   assert.equal(service.startInterval, 300);
   assert.deepEqual(service.calendarIntervals, [{ weekday: 1, hour: 8, minute: 30 }, { weekday: 0, hour: 17, minute: 45 }, { weekday: null, hour: null, minute: 5 }]);
   assert.equal(service.canManage, true);
+  assert.equal(service.canEdit, false);
   assert.equal(launchdDomain(service, 501), "gui/501");
 });
 
@@ -75,6 +91,68 @@ test("writes all four launchd start options to the LaunchAgent plist", () => {
   assert.match(plist, /<key>Weekday<\/key>\s*<integer>1<\/integer>/);
   assert.match(plist, /<key>Hour<\/key>\s*<integer>18<\/integer>/);
   assert.match(plist, /<key>Minute<\/key>\s*<integer>30<\/integer>/);
+});
+
+test("updates an existing LaunchAgent while preserving unsupported plist keys", async (t) => {
+  const home = await mkdtemp(join(tmpdir(), "apfel-hafen-launchd-edit-"));
+  t.after(() => rm(home, { recursive: true, force: true }));
+  const directory = join(home, "Library", "LaunchAgents");
+  const path = join(directory, "de.example.edit.plist");
+  await mkdir(directory, { recursive: true });
+  await writeFile(path, launchAgentPlistFromDraft({ label: "de.example.edit", program: "/usr/bin/true", runAtLoad: true, keepAlive: false }));
+  await runProcess("/usr/bin/plutil", ["-insert", "WorkingDirectory", "-string", "/tmp", path]);
+
+  const service = { label: "de.example.edit", kind: "LaunchAgent", scope: "user", path, loaded: false, canManage: true, canEdit: true };
+  await updateLaunchdService(service, {
+    program: "/usr/bin/false", arguments: ["--example"], runAtLoad: false, keepAlive: true,
+    startInterval: 600, calendarIntervals: [{ weekday: 1, hour: 8, minute: 30 }],
+    standardOutPath: "/tmp/edit.out", standardErrorPath: "",
+  }, runProcess, { home, uniqueId: () => "test" });
+
+  const converted = await runProcess("/usr/bin/plutil", ["-convert", "json", "-o", "-", path]);
+  const plist = JSON.parse(converted.stdout);
+  assert.deepEqual(plist.ProgramArguments, ["/usr/bin/false", "--example"]);
+  assert.equal(plist.WorkingDirectory, "/tmp");
+  assert.equal(plist.RunAtLoad, false);
+  assert.equal(plist.KeepAlive, true);
+  assert.equal(plist.StartInterval, 600);
+  assert.deepEqual(plist.StartCalendarInterval, [{ Weekday: 1, Hour: 8, Minute: 30 }]);
+  assert.equal(plist.StandardOutPath, "/tmp/edit.out");
+  assert.equal(plist.StandardErrorPath, undefined);
+  assert.match(await readFile(path, "utf8"), /<plist/);
+});
+
+test("rejects editing LaunchAgents outside the current user's directory", async () => {
+  await assert.rejects(() => updateLaunchdService({ label: "de.example.edit", kind: "LaunchAgent", scope: "user", path: "/tmp/de.example.edit.plist", canManage: true }, { program: "/usr/bin/true" }, async () => ({ code: 0 })), /nicht sicher/);
+});
+
+test("restores and reloads the previous LaunchAgent when the edited version cannot start", async () => {
+  const calls = [];
+  const moves = [];
+  let bootstrapCount = 0;
+  const processRunner = async (program, args) => {
+    calls.push([program, args]);
+    if (program === "/bin/launchctl" && args[0] === "bootstrap" && bootstrapCount++ === 0) return { code: 5, stderr: "new configuration rejected" };
+    return { code: 0, stdout: "", stderr: "" };
+  };
+  const path = "/Users/test/Library/LaunchAgents/de.example.rollback.plist";
+  const service = { label: "de.example.rollback", kind: "LaunchAgent", scope: "user", path, loaded: true, canManage: true, canEdit: true };
+
+  await assert.rejects(() => updateLaunchdService(service, { program: "/usr/bin/true" }, processRunner, {
+    home: "/Users/test",
+    copy: async () => {},
+    move: async (...args) => moves.push(args),
+    remove: async () => {},
+    uniqueId: () => "rollback",
+  }), /new configuration rejected/);
+
+  assert.equal(calls.filter(([program, args]) => program === "/bin/launchctl" && args[0] === "bootstrap").length, 2);
+  assert.deepEqual(moves.map(([from, to]) => [from, to]), [
+    [path, "/Users/test/Library/LaunchAgents/.de.example.rollback.rollback.backup.plist"],
+    ["/Users/test/Library/LaunchAgents/.de.example.rollback.rollback.plist", path],
+    [path, "/Users/test/Library/LaunchAgents/.de.example.rollback.rollback.replaced.plist"],
+    ["/Users/test/Library/LaunchAgents/.de.example.rollback.rollback.backup.plist", path],
+  ]);
 });
 
 test("validates LaunchAgent labels, paths and log paths", () => {

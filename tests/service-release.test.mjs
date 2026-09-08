@@ -89,7 +89,7 @@ test("native app bundle uses SMAppService without an embedded browser", async ()
 });
 
 test("LaunchAgent creation exposes all four launchd start options", async () => {
-  const client = await readFile(new URL("../src/main.jsx", import.meta.url), "utf8");
+  const client = await readFile(new URL("../src/LaunchdScheduleOptions.jsx", import.meta.url), "utf8");
 
   assert.match(client, /runAtLoad/);
   assert.match(client, /keepAlive/);
@@ -98,16 +98,27 @@ test("LaunchAgent creation exposes all four launchd start options", async () => 
   assert.match(client, /function LaunchdScheduleOptions/);
 });
 
-test("release 0.2.7 metadata and artifact names stay aligned", async () => {
+test("existing user LaunchAgents can be edited through the protected API", async () => {
+  const [server, client] = await Promise.all([
+    readFile(new URL("../server.mjs", import.meta.url), "utf8"),
+    readFile(new URL("../src/main.jsx", import.meta.url), "utf8"),
+  ]);
+  assert.match(server, /req\.method === "PUT" && launchdEditMatch/);
+  assert.match(server, /updateLaunchdService/);
+  assert.match(client, /method: serviceEditing \? "PUT" : "POST"/);
+  assert.match(client, /launchdDraftFromService/);
+});
+
+test("release 0.2.8 metadata and artifact names stay aligned", async () => {
   const [packageSource, readmeDe, readmeEn, releaseNotes] = await Promise.all([
     readFile(new URL("../package.json", import.meta.url), "utf8"),
     readFile(new URL("../README-DE.md", import.meta.url), "utf8"),
     readFile(new URL("../README.md", import.meta.url), "utf8"),
-    readFile(new URL("../RELEASE-NOTES-0.2.7.md", import.meta.url), "utf8"),
+    readFile(new URL("../RELEASE-NOTES-0.2.8.md", import.meta.url), "utf8"),
   ]);
 
-  assert.equal(JSON.parse(packageSource).version, "0.2.7");
-  assert.match(readmeDe, /Apfel-Hafen-0\.2\.7-macos-arm64\.zip/);
-  assert.match(readmeEn, /Apfel-Hafen-0\.2\.7-macos-arm64\.dmg/);
-  assert.match(releaseNotes, /^# Apfel-Hafen 0\.2\.7$/m);
+  assert.equal(JSON.parse(packageSource).version, "0.2.8");
+  assert.match(readmeDe, /Apfel-Hafen-0\.2\.8-macos-arm64\.zip/);
+  assert.match(readmeEn, /Apfel-Hafen-0\.2\.8-macos-arm64\.dmg/);
+  assert.match(releaseNotes, /^# Apfel-Hafen 0\.2\.8$/m);
 });

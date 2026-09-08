@@ -48,8 +48,8 @@ Browser. Technische Details stehen unter [docs/native-app.md](docs/native-app.md
 
 ### Fertige Auslieferung
 
-Jedes Release enthält das Server-Archiv `Apfel-Hafen-0.2.7-macos-arm64.zip`
-und die native macOS-App als `Apfel-Hafen-0.2.7-macos-arm64.dmg`. Das Archiv
+Jedes Release enthält das Server-Archiv `Apfel-Hafen-0.2.8-macos-arm64.zip`
+und die native macOS-App als `Apfel-Hafen-0.2.8-macos-arm64.dmg`. Das Archiv
 enthält die benötigte Node.js-Laufzeit, das kompilierte PAM-Hilfsprogramm und
 die gebaute Weboberfläche. Apple-Container, Images, Volumes und Anwendungsdaten
 sind nicht enthalten. Archiv entpacken und `Start-Apfel-Hafen.command` starten.
