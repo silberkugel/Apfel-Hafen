@@ -68,6 +68,7 @@ test("uses a temporary name for non-destructive preflight creation", () => {
 test("extracts editable settings and applies overrides while preserving other options", () => {
   const settings = editableContainerSettings(record);
   assert.deepEqual(settings.variables, [{ key: "TZ", value: "Europe/Berlin" }]);
+  assert.deepEqual(settings.arguments, ["evcc"]);
   assert.equal(settings.memoryMb, 1024);
   const changed = validateContainerSettings({ ...settings, cpus: 4, ports: [{ hostPort: 8080, containerPort: 80, protocol: "tcp" }] });
   const args = buildCreateArgs(record, settings.image, null, changed);
@@ -95,6 +96,7 @@ test("validates and builds arguments for a new container", () => {
     cpus: 2,
     memoryMb: 1024,
     start: true,
+    arguments: ["gateway", "run"],
     variables: [{ key: "APP_ENV", value: "production" }],
     ports: [{ hostPort: 8080, containerPort: 80, protocol: "tcp" }],
     volumes: [{ subpath: "web-1/data", destination: "/data", readOnly: false }],
@@ -105,8 +107,17 @@ test("validates and builds arguments for a new container", () => {
     "--env", "APP_ENV=production",
     "--publish", "8080:80/tcp",
     "--volume", "/ContainerVolumes/web-1/data:/data",
-    "docker.io/library/nginx:latest",
+    "docker.io/library/nginx:latest", "gateway", "run",
   ]);
+});
+
+test("edits startup arguments without invoking a shell", () => {
+  const settings = editableContainerSettings(record);
+  const changed = validateContainerSettings({ ...settings, arguments: ["gateway", "run; echo unsafe"] });
+  const args = buildCreateArgs(record, settings.image, null, changed);
+  assert.deepEqual(args.slice(-3), [settings.image, "gateway", "run; echo unsafe"]);
+  assert.throws(() => validateContainerSettings({ ...settings, arguments: new Array(129).fill("x") }), /128 Startargumente/);
+  assert.throws(() => validateContainerSettings({ ...settings, arguments: ["bad\0argument"] }), /ungültig/);
 });
 
 test("rejects occupied ports and volume path traversal", () => {

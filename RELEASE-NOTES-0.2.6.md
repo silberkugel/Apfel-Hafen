@@ -1,16 +1,20 @@
 # Apfel-Hafen 0.2.6
 
-## Updates
+Diese Version erweitert Apfel-Hafen um eine zentrale Verwaltung für macOS-Dienste und verbessert die Container-Konfiguration.
 
-- Nach einem erfolgreichen Image-Update wird der lokale Update-Status zurückgesetzt. Die Aktion wechselt dadurch zuverlässig von „Container ersetzen“ zurück zu „Update prüfen“.
-- Die Container-Konsole probiert bei Images ohne `sh` automatisch weitere verfügbare Shells beziehungsweise Python aus.
+## Neu
 
-## Diagnose und Stabilität
+- LaunchD-Dienste lassen sich in einer eigenen Dienstzentrale anzeigen, filtern und verwalten.
+- Benutzer-Dienste können erstellt, gestartet, gestoppt, neu gestartet und bereinigt werden.
+- Startargumente von Containern können beim Erstellen und späteren Bearbeiten gepflegt werden.
+- Vollständige Docker-Hub-Referenzen werden bei der Image-Suche direkt erkannt und angeboten.
 
-- Start- und Containerprotokolle können über das Drei-Punkte-Menü direkt in der Oberfläche angezeigt und neu geladen werden.
-- Schlägt der erste Start eines neu erstellten Containers fehl, bleibt der Container für die Fehleranalyse erhalten.
-- Ist Apples Containerdienst vorübergehend nicht erreichbar, versucht Apfel-Hafen ihn einmal zu starten und wiederholt anschließend den ursprünglichen Befehl.
+## Verbessert
 
-## Container-Vorgaben
+- Die Image-Suche bleibt bei direkten Referenzen auch dann nutzbar, wenn Docker Hub vorübergehend nicht erreichbar ist.
+- Anmeldung und API-Proxy funktionieren konsistent in der lokalen Entwicklungsumgebung.
+- Zusätzliche Tests sichern LaunchD-Verwaltung, Startargumente, Image-Suche und Update-Prüfung ab.
 
-- MQTT- und Mosquitto-Images erhalten sinnvolle Vorschläge für Port `1883` und das Datenverzeichnis `/mosquitto/data`.
+## Release-Artefakt
+
+Das macOS-ARM64-Paket enthält die Weboberfläche, die native SwiftUI-App und die gebündelte Node.js-Laufzeit.

@@ -3,9 +3,9 @@
 [English version](README.md)
 
 **Apfel-Hafen** ist eine lokale Weboberfläche zur Verwaltung von
-Apple-Containern unter macOS 26. Sie zeigt vorhandene Container kompakt an und
-kann sie erstellen, starten, stoppen, neu starten, sicher löschen sowie auf
-aktualisierte Images prüfen.
+Apple-Containern und benutzerbezogenen LaunchD-Diensten unter macOS 26. Sie
+zeigt vorhandene Container und Dienste kompakt an, verwaltet deren Lebenszyklus
+und prüft Container auf aktualisierte Images.
 
 Die Oberfläche wird ausschließlich über HTTPS bereitgestellt und ist in der
 lokalen Standardeinstellung unter `https://127.0.0.1:4173` erreichbar. Änderungen an Containern erfordern die
@@ -48,8 +48,8 @@ Browser. Technische Details stehen unter [docs/native-app.md](docs/native-app.md
 
 ### Fertige Auslieferung
 
-Jedes Release enthält das Server-Archiv `Apfel-Hafen-0.2.6-macos-arm64.zip`
-und die native macOS-App als `Apfel-Hafen-0.2.6-macos-arm64.dmg`. Das Archiv
+Jedes Release enthält das Server-Archiv `Apfel-Hafen-0.2.7-macos-arm64.zip`
+und die native macOS-App als `Apfel-Hafen-0.2.7-macos-arm64.dmg`. Das Archiv
 enthält die benötigte Node.js-Laufzeit, das kompilierte PAM-Hilfsprogramm und
 die gebaute Weboberfläche. Apple-Container, Images, Volumes und Anwendungsdaten
 sind nicht enthalten. Archiv entpacken und `Start-Apfel-Hafen.command` starten.
@@ -130,8 +130,9 @@ macOS-Firewall-Konfiguration verwendet werden.
 
 ## Handhabung
 
-Die Startseite zeigt alle Apple-Container mit Namen, Image und aktuellem
-Status. Statusinformationen können ohne Anmeldung angesehen werden.
+Die Dienstzentrale zeigt alle Apple-Container sowie benutzer- und systembezogene
+LaunchD-Dienste mit ihrem aktuellen Status. Statusinformationen können ohne
+Anmeldung angesehen werden; systemweite LaunchD-Dienste bleiben schreibgeschützt.
 
 Für schreibende Aktionen melden Sie sich mit einem lokalen
 macOS-Administratorkonto an. Danach stehen folgende Funktionen bereit:
@@ -144,6 +145,8 @@ macOS-Administratorkonto an. Danach stehen folgende Funktionen bereit:
   Apfel-Hafen verwalteten Volume-Daten mitgelöscht werden
 - nach einer neueren Version des verwendeten Images suchen
 - Container kontrolliert mit dem aktuellen Image ersetzen
+- benutzerbezogene LaunchAgents erstellen, starten, stoppen, neu starten und
+  verwaiste Konfigurationen bereinigen
 - den globalen Basispfad für von Apfel-Hafen verwaltete Volumes festlegen
 - zwischen rein lokaler Erreichbarkeit (`127.0.0.1`) und Netzwerkzugriff
   (`0.0.0.0`) wechseln

@@ -47,7 +47,7 @@ test("administrator can open a container console and inspect startup logs", asyn
   assert.match(server, /\["logs", "--boot", name\]/);
   assert.match(server, /\["logs", "-n", "200", name\]/);
   assert.match(client, /openContainerLogs/);
-  assert.match(client, /t\("logs"\)/);
+  assert.match(client, /t\("containerLogsLabel"\)/);
   assert.match(client, /className="log-sections"/);
   assert.match(client, /containerLogs\.bootLog/);
   assert.match(client, /containerLogs\.outputLog/);
@@ -71,6 +71,14 @@ test("successful container replacement clears the checked update state", async (
   assert.match(client, /delete next\[container\.name\]/);
 });
 
+test("Hermes images receive safe gateway defaults", async () => {
+  const source = await readFile(new URL("../src/main.jsx", import.meta.url), "utf8");
+  assert.match(source, /nousresearch\\\/hermes-agent/);
+  assert.match(source, /containerPort = 8642/);
+  assert.match(source, /destination = "\/opt\/data"/);
+  assert.match(source, /\["gateway", "run"\]/);
+});
+
 test("native app bundle uses SMAppService without an embedded browser", async () => {
   const service = await readFile(new URL("../MacApp/Sources/ApfelHafen/Services/ServiceManager.swift", import.meta.url), "utf8");
   const app = await readFile(new URL("../MacApp/Sources/ApfelHafen/App/ApfelHafenApp.swift", import.meta.url), "utf8");
@@ -78,4 +86,18 @@ test("native app bundle uses SMAppService without an embedded browser", async ()
   assert.match(service, /SMAppService\.agent/);
   assert.match(plist, /<key>BundleProgram<\/key>/);
   assert.doesNotMatch(app, /WKWebView|WebKit/);
+});
+
+test("release 0.2.7 metadata and artifact names stay aligned", async () => {
+  const [packageSource, readmeDe, readmeEn, releaseNotes] = await Promise.all([
+    readFile(new URL("../package.json", import.meta.url), "utf8"),
+    readFile(new URL("../README-DE.md", import.meta.url), "utf8"),
+    readFile(new URL("../README.md", import.meta.url), "utf8"),
+    readFile(new URL("../RELEASE-NOTES-0.2.7.md", import.meta.url), "utf8"),
+  ]);
+
+  assert.equal(JSON.parse(packageSource).version, "0.2.7");
+  assert.match(readmeDe, /Apfel-Hafen-0\.2\.7-macos-arm64\.zip/);
+  assert.match(readmeEn, /Apfel-Hafen-0\.2\.7-macos-arm64\.dmg/);
+  assert.match(releaseNotes, /^# Apfel-Hafen 0\.2\.7$/m);
 });

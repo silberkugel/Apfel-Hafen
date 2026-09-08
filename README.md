@@ -2,9 +2,10 @@
 
 [Deutsche Version](README-DE.md)
 
-**Apfel-Hafen** is a local web interface for managing Apple containers on
-macOS 26. It displays existing containers in a compact layout and lets you
-create, start, stop, restart, safely delete, and check them for updated images.
+**Apfel-Hafen** is a local web interface for managing Apple containers and
+per-user LaunchD services on macOS 26. It displays containers and services in a
+compact layout, manages their lifecycle, and checks containers for updated
+images.
 
 The interface is served exclusively over HTTPS and is available in the default
 local configuration at `https://127.0.0.1:4173`.
@@ -48,8 +49,8 @@ for technical details.
 
 ### Ready-to-use release
 
-Every release contains the `Apfel-Hafen-0.2.6-macos-arm64.zip` server archive
-and the native macOS app as `Apfel-Hafen-0.2.6-macos-arm64.dmg`. The archive
+Every release contains the `Apfel-Hafen-0.2.7-macos-arm64.zip` server archive
+and the native macOS app as `Apfel-Hafen-0.2.7-macos-arm64.dmg`. The archive
 contains the required Node.js runtime, compiled PAM helper, and built web
 interface. Apple containers, images, volumes, and application data are not
 included. Extract the archive and run `Start-Apfel-Hafen.command`.
@@ -129,8 +130,9 @@ certificate and a restrictive macOS firewall configuration.
 
 ## Usage
 
-The home page lists all Apple containers with their names, images, and current
-status. Status information can be viewed without signing in.
+The service center lists Apple containers as well as user and system LaunchD
+services with their current status. Status information can be viewed without
+signing in; system LaunchD services remain read-only.
 
 For administrative actions, sign in with a local macOS administrator account.
 The following functions are then available:
@@ -143,6 +145,8 @@ The following functions are then available:
   volume data managed by Apfel-Hafen as well
 - check for a newer version of the image in use
 - safely replace a container with the current image
+- create, start, stop, and restart per-user LaunchAgents and clean up orphaned
+  configurations
 - configure the global base path for volumes managed by Apfel-Hafen
 - switch between local-only access (`127.0.0.1`) and network access (`0.0.0.0`)
 - activate a custom PEM server certificate with its matching private key or
