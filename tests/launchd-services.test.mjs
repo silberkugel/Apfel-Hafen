@@ -8,9 +8,11 @@ test("parses launchctl state without mistaking an exited job for running", () =>
 });
 
 test("normalizes plist metadata and limits management to the user scope", () => {
-  const service = normalizeLaunchdService({ Label: "de.example.worker", ProgramArguments: ["/usr/bin/true", "--once"], RunAtLoad: true, KeepAlive: { SuccessfulExit: false } }, { scope: "user", kind: "LaunchAgent", path: "/Users/test/Library/LaunchAgents/de.example.worker.plist" });
+  const service = normalizeLaunchdService({ Label: "de.example.worker", ProgramArguments: ["/usr/bin/true", "--once"], RunAtLoad: true, KeepAlive: { SuccessfulExit: false }, StartInterval: 300, StartCalendarInterval: [{ Weekday: 1, Hour: 8, Minute: 30 }, { Weekday: 7, Hour: 17, Minute: 45 }, { Minute: 5 }] }, { scope: "user", kind: "LaunchAgent", path: "/Users/test/Library/LaunchAgents/de.example.worker.plist" });
   assert.equal(service.program, "/usr/bin/true");
   assert.equal(service.keepAlive, true);
+  assert.equal(service.startInterval, 300);
+  assert.deepEqual(service.calendarIntervals, [{ weekday: 1, hour: 8, minute: 30 }, { weekday: 0, hour: 17, minute: 45 }, { weekday: null, hour: null, minute: 5 }]);
   assert.equal(service.canManage, true);
   assert.equal(launchdDomain(service, 501), "gui/501");
 });
@@ -56,8 +58,30 @@ test("creates an escaped user LaunchAgent without overwriting files", async () =
   assert.match(result.message, /erstellt und geladen/);
 });
 
+test("writes all four launchd start options to the LaunchAgent plist", () => {
+  const plist = launchAgentPlistFromDraft({
+    label: "de.example.scheduled",
+    program: "/usr/bin/true",
+    runAtLoad: true,
+    keepAlive: true,
+    startInterval: 900,
+    calendarIntervals: [{ weekday: null, hour: 7, minute: 15 }, { weekday: 1, hour: 18, minute: 30 }],
+  });
+
+  assert.match(plist, /<key>RunAtLoad<\/key>\s*<true\/>/);
+  assert.match(plist, /<key>KeepAlive<\/key>\s*<true\/>/);
+  assert.match(plist, /<key>StartInterval<\/key>\s*<integer>900<\/integer>/);
+  assert.match(plist, /<key>StartCalendarInterval<\/key>\s*<array>/);
+  assert.match(plist, /<key>Weekday<\/key>\s*<integer>1<\/integer>/);
+  assert.match(plist, /<key>Hour<\/key>\s*<integer>18<\/integer>/);
+  assert.match(plist, /<key>Minute<\/key>\s*<integer>30<\/integer>/);
+});
+
 test("validates LaunchAgent labels, paths and log paths", () => {
   assert.throws(() => validateLaunchdDraft({ label: "bad label", program: "/usr/bin/true" }), /Label/);
   assert.throws(() => validateLaunchdDraft({ label: "de.ok", program: "relative" }), /Programmpfad/);
   assert.throws(() => launchAgentPlistFromDraft({ label: "de.ok", program: "/usr/bin/true", standardOutPath: "relative.log" }), /Logpfade/);
+  assert.throws(() => validateLaunchdDraft({ label: "de.ok", program: "/usr/bin/true", startInterval: 0 }), /Startintervall/);
+  assert.throws(() => validateLaunchdDraft({ label: "de.ok", program: "/usr/bin/true", calendarIntervals: [{ weekday: 8, hour: 12, minute: 0 }] }), /Wochentag/);
+  assert.throws(() => validateLaunchdDraft({ label: "de.ok", program: "/usr/bin/true", calendarIntervals: [{ weekday: 1, hour: 24, minute: 0 }] }), /Uhrzeit/);
 });

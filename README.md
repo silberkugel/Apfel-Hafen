@@ -146,7 +146,8 @@ The following functions are then available:
 - check for a newer version of the image in use
 - safely replace a container with the current image
 - create, start, stop, and restart per-user LaunchAgents and clean up orphaned
-  configurations
+  configurations; automatic launch options include `RunAtLoad`, `KeepAlive`,
+  `StartInterval`, and multiple `StartCalendarInterval` times
 - configure the global base path for volumes managed by Apfel-Hafen
 - switch between local-only access (`127.0.0.1`) and network access (`0.0.0.0`)
 - activate a custom PEM server certificate with its matching private key or

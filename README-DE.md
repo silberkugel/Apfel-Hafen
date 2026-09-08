@@ -146,7 +146,9 @@ macOS-Administratorkonto an. Danach stehen folgende Funktionen bereit:
 - nach einer neueren Version des verwendeten Images suchen
 - Container kontrolliert mit dem aktuellen Image ersetzen
 - benutzerbezogene LaunchAgents erstellen, starten, stoppen, neu starten und
-  verwaiste Konfigurationen bereinigen
+  verwaiste Konfigurationen bereinigen; als automatische Startarten stehen
+  `RunAtLoad`, `KeepAlive`, `StartInterval` und mehrere
+  `StartCalendarInterval`-Zeiten zur Verfügung
 - den globalen Basispfad für von Apfel-Hafen verwaltete Volumes festlegen
 - zwischen rein lokaler Erreichbarkeit (`127.0.0.1`) und Netzwerkzugriff
   (`0.0.0.0`) wechseln

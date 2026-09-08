@@ -114,6 +114,10 @@ const englishMessages = new Map([
   ["Der Container-Pfad eines Volumes muss absolut sein.", "A volume's container path must be absolute."],
   ["Der Host-Pfad eines Volumes muss absolut sein.", "A volume's host path must be absolute."],
   ["Ein Container mit diesem Namen ist bereits vorhanden.", "A container with this name already exists."],
+  ["Das Startintervall muss zwischen 1 Sekunde und 365 Tagen liegen.", "The start interval must be between 1 second and 365 days."],
+  ["Es sind höchstens 32 kalenderbasierte Startzeiten erlaubt.", "A maximum of 32 calendar-based start times is allowed."],
+  ["Der Wochentag der Startzeit ist ungültig.", "The start time weekday is invalid."],
+  ["Kalenderbasierte Startzeiten benötigen eine gültige Uhrzeit.", "Calendar-based start times require a valid time."],
 ]);
 
 function requestLanguage(req) {

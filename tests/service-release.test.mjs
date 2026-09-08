@@ -88,6 +88,16 @@ test("native app bundle uses SMAppService without an embedded browser", async ()
   assert.doesNotMatch(app, /WKWebView|WebKit/);
 });
 
+test("LaunchAgent creation exposes all four launchd start options", async () => {
+  const client = await readFile(new URL("../src/main.jsx", import.meta.url), "utf8");
+
+  assert.match(client, /runAtLoad/);
+  assert.match(client, /keepAlive/);
+  assert.match(client, /startInterval/);
+  assert.match(client, /calendarIntervals/);
+  assert.match(client, /function LaunchdScheduleOptions/);
+});
+
 test("release 0.2.7 metadata and artifact names stay aligned", async () => {
   const [packageSource, readmeDe, readmeEn, releaseNotes] = await Promise.all([
     readFile(new URL("../package.json", import.meta.url), "utf8"),
