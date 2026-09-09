@@ -48,8 +48,8 @@ Browser. Technische Details stehen unter [docs/native-app.md](docs/native-app.md
 
 ### Fertige Auslieferung
 
-Jedes Release enthält das Server-Archiv `Apfel-Hafen-0.2.8-macos-arm64.zip`
-und die native macOS-App als `Apfel-Hafen-0.2.8-macos-arm64.dmg`. Das Archiv
+Jedes Release enthält das Server-Archiv `Apfel-Hafen-0.2.9-macos-arm64.zip`
+und die native macOS-App als `Apfel-Hafen-0.2.9-macos-arm64.dmg`. Das Archiv
 enthält die benötigte Node.js-Laufzeit, das kompilierte PAM-Hilfsprogramm und
 die gebaute Weboberfläche. Apple-Container, Images, Volumes und Anwendungsdaten
 sind nicht enthalten. Archiv entpacken und `Start-Apfel-Hafen.command` starten.
@@ -160,6 +160,64 @@ Zertifikate und private Schlüssel werden unter
 `~/Library/Application Support/Apfel-Hafen/tls/` außerhalb der Weboberfläche
 gespeichert. Der private Schlüssel ist nur für den ausführenden Benutzer
 lesbar. HTTP-Verbindungen werden nicht angenommen.
+
+## Hermes Agent über Remote MCP
+
+Apfel-Hafen stellt optional einen zustandslosen Streamable-HTTP-MCP-Endpunkt
+unter `https://<Adresse>:4173/mcp` bereit. Er ist standardmäßig deaktiviert.
+Zum Aktivieren muss beim Start ein eigener Bearer-Token mit mindestens 32
+Zeichen über `APFEL_HAFEN_MCP_TOKEN` gesetzt werden. Für den LaunchAgent-Betrieb
+kann der Token stattdessen unter
+`~/Library/Application Support/Apfel-Hafen/mcp-token` abgelegt werden. Die Datei
+muss nur für den aktuellen Benutzer lesbar sein, beispielsweise:
+
+```console
+mkdir -p "$HOME/Library/Application Support/Apfel-Hafen"
+openssl rand -hex 32 > "$HOME/Library/Application Support/Apfel-Hafen/mcp-token"
+chmod 600 "$HOME/Library/Application Support/Apfel-Hafen/mcp-token"
+```
+
+Nach dem Anlegen oder Austauschen des Tokens muss Apfel-Hafen neu gestartet
+werden. Der Endpunkt stellt ausschließlich diese Werkzeuge bereit:
+
+- `list_containers`
+- `get_container_status`
+- `get_container_logs`
+- `start_container`
+- `stop_container`
+- `restart_container`
+- `check_image_update`
+
+Shell-Zugriff, Löschen, Erstellen und Änderungen an Host, LaunchD oder
+Apfel-Hafen-Einstellungen sind nicht über MCP verfügbar. Alle MCP-Anfragen
+benötigen `Authorization: Bearer <Token>`. Für Zugriff von einem anderen Gerät
+muss zusätzlich der Netzwerkzugriff in Apfel-Hafen aktiviert und das
+Serverzertifikat auf dem Hermes-System als vertrauenswürdig eingerichtet sein.
+
+Beispiel für `~/.hermes/config.yaml`:
+
+```yaml
+mcp_servers:
+  apfel_hafen:
+    url: "https://apfel-hafen.example:4173/mcp"
+    headers:
+      Authorization: "Bearer ${APFEL_HAFEN_MCP_TOKEN}"
+    tools:
+      include:
+        - list_containers
+        - get_container_status
+        - get_container_logs
+        - start_container
+        - stop_container
+        - restart_container
+        - check_image_update
+      resources: false
+      prompts: false
+```
+
+Der Token muss auf der Hermes-Seite wie ein Passwort geschützt und darf nicht
+in das Repository eingecheckt werden. MCP-Werkzeugaufrufe werden ohne Token im
+Dienstprotokoll als strukturierte Audit-Einträge erfasst.
 
 Vor dem Ersetzen eines Containers legt Apfel-Hafen unter
 `~/Library/Application Support/Apfel-Hafen/backups/<Containername>/` eine

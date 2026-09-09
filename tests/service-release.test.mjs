@@ -109,16 +109,16 @@ test("existing user LaunchAgents can be edited through the protected API", async
   assert.match(client, /launchdDraftFromService/);
 });
 
-test("release 0.2.8 metadata and artifact names stay aligned", async () => {
+test("release 0.2.9 metadata and artifact names stay aligned", async () => {
   const [packageSource, readmeDe, readmeEn, releaseNotes] = await Promise.all([
     readFile(new URL("../package.json", import.meta.url), "utf8"),
     readFile(new URL("../README-DE.md", import.meta.url), "utf8"),
     readFile(new URL("../README.md", import.meta.url), "utf8"),
-    readFile(new URL("../RELEASE-NOTES-0.2.8.md", import.meta.url), "utf8"),
+    readFile(new URL("../RELEASE-NOTES-0.2.9.md", import.meta.url), "utf8"),
   ]);
 
-  assert.equal(JSON.parse(packageSource).version, "0.2.8");
-  assert.match(readmeDe, /Apfel-Hafen-0\.2\.8-macos-arm64\.zip/);
-  assert.match(readmeEn, /Apfel-Hafen-0\.2\.8-macos-arm64\.dmg/);
-  assert.match(releaseNotes, /^# Apfel-Hafen 0\.2\.8$/m);
+  assert.equal(JSON.parse(packageSource).version, "0.2.9");
+  assert.match(readmeDe, /Apfel-Hafen-0\.2\.9-macos-arm64\.zip/);
+  assert.match(readmeEn, /Apfel-Hafen-0\.2\.9-macos-arm64\.dmg/);
+  assert.match(releaseNotes, /^# Apfel-Hafen 0\.2\.9$/m);
 });

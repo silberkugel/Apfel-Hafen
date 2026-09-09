@@ -1,7 +1,7 @@
 import { createServer } from "node:https";
 import { spawn } from "node:child_process";
 import { createReadStream, existsSync } from "node:fs";
-import { chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { randomBytes } from "node:crypto";
 import { extname, isAbsolute, join, normalize, relative, resolve } from "node:path";
 import { homedir } from "node:os";
@@ -15,6 +15,7 @@ import { localListenHost, normalizeListenHost, requestMatchesOrigin } from "./li
 import { installCustomCertificate, loadTlsCertificate, removeCustomCertificate } from "./lib/tls-certificates.mjs";
 import { prepareApplicationData } from "./lib/app-paths.mjs";
 import { cleanupLaunchdService, createLaunchdService, executeLaunchdAction, findLaunchdService, listLaunchdServices, updateLaunchdService } from "./lib/launchd-services.mjs";
+import { currentMcpProtocolVersion, dispatchMcpPayload, mcpBearerAuthorized, validMcpToken, validateModernMcpHeaders } from "./lib/mcp-server.mjs";
 
 const root = fileURLToPath(new URL(".", import.meta.url));
 const appPaths = await prepareApplicationData(root);
@@ -31,6 +32,21 @@ const imageSearchCache = new Map();
 const sessions = new Map();
 const loginAttempts = new Map();
 const sessionDurationMs = 30 * 60 * 1000;
+const mcpTokenPath = join(appPaths.base, "mcp-token");
+const mcpToken = await (async () => {
+  if (process.env.APFEL_HAFEN_MCP_TOKEN) return String(process.env.APFEL_HAFEN_MCP_TOKEN);
+  try {
+    const tokenFile = await stat(mcpTokenPath);
+    if ((tokenFile.mode & 0o077) !== 0) {
+      console.error(`Apfel-Hafen: MCP token file must have mode 0600: ${mcpTokenPath}`);
+      return "";
+    }
+    return (await readFile(mcpTokenPath, "utf8")).trim();
+  } catch (error) {
+    if (error.code !== "ENOENT") console.error(`Apfel-Hafen: MCP token could not be read: ${error.message}`);
+    return "";
+  }
+})();
 const serviceLabel = "de.apfel-hafen.service";
 const serviceDomain = `gui/${process.getuid()}`;
 const launchAgentPath = join(homedir(), "Library", "LaunchAgents", `${serviceLabel}.plist`);
@@ -355,6 +371,49 @@ async function runContainer(args, timeout = 120_000) {
 async function currentState() {
   const output = await runContainer(["list", "--all", "--format", "json"]);
   return { records: JSON.parse(output || "[]"), containers: parseContainers(output) };
+}
+
+function mcpContainerName(args) {
+  if (!args || typeof args !== "object" || Array.isArray(args) || Object.keys(args).some((key) => key !== "name")) {
+    throw new Error("Exactly one container name must be provided.");
+  }
+  const name = String(args.name || "");
+  if (!/^[A-Za-z0-9._-]{1,128}$/.test(name)) throw new Error("The container name is invalid.");
+  return name;
+}
+
+async function invokeMcpTool(tool, args) {
+  const startedAt = Date.now();
+  const name = tool === "list_containers" ? "" : mcpContainerName(args);
+  try {
+    if (tool === "list_containers") {
+      if (Object.keys(args).length) throw new Error("This tool does not accept arguments.");
+      const { containers } = await currentState();
+      return { containers, refreshedAt: new Date().toISOString() };
+    }
+
+    if (tool === "get_container_status") {
+      const { containers } = await currentState();
+      const container = containers.find((item) => item.name === name);
+      if (!container) throw new Error("Container does not exist.");
+      return { container, refreshedAt: new Date().toISOString() };
+    }
+    if (tool === "get_container_logs") return openContainerLogs(name);
+    if (tool === "check_image_update") return checkUpdate(name);
+
+    if (["start_container", "stop_container", "restart_container"].includes(tool)) {
+      const { containers } = await currentState();
+      const selected = containers.find((item) => item.name === name);
+      if (!selected) throw new Error("Container does not exist.");
+      const action = tool.replace("_container", "");
+      const output = await executeLifecycle(action, selected);
+      return { ok: true, name, action, message: output || "Action completed." };
+    }
+
+    throw new Error("Unknown MCP tool.");
+  } finally {
+    console.log(JSON.stringify({ event: "mcp_tool_call", tool, container: name || undefined, durationMs: Date.now() - startedAt, at: new Date().toISOString() }));
+  }
 }
 
 async function imageNames() {
@@ -807,6 +866,41 @@ async function handleApi(req, res, pathname) {
   }
 }
 
+async function handleMcp(req, res) {
+  if (req.method !== "POST") {
+    res.writeHead(405, { "Allow": "POST", "Cache-Control": "no-store" });
+    return res.end();
+  }
+  if (!validMcpToken(mcpToken)) {
+    return json(res, 503, { error: "Remote MCP is disabled. Configure APFEL_HAFEN_MCP_TOKEN with a token of at least 32 non-whitespace characters." });
+  }
+  if (!mcpBearerAuthorized(req.headers.authorization, mcpToken)) {
+    return json(res, 401, { error: "Unauthorized" }, { "WWW-Authenticate": 'Bearer realm="apfel-hafen-mcp"' });
+  }
+  if (!String(req.headers["content-type"] || "").toLowerCase().startsWith("application/json")) {
+    return json(res, 415, { jsonrpc: "2.0", id: null, error: { code: -32600, message: "Content-Type must be application/json." } });
+  }
+
+  let payload;
+  try {
+    payload = await readBody(req);
+  } catch {
+    return json(res, 400, { jsonrpc: "2.0", id: null, error: { code: -32700, message: "Parse error" } });
+  }
+
+  if (!Array.isArray(payload)) {
+    const headerError = validateModernMcpHeaders(req.headers, payload);
+    if (headerError) return json(res, 400, { jsonrpc: "2.0", id: payload?.id ?? null, error: { code: -32020, message: "HeaderMismatch", data: headerError } });
+  }
+  const protocolVersion = String(req.headers["mcp-protocol-version"] || "");
+  const reply = await dispatchMcpPayload(payload, invokeMcpTool, { protocolVersion });
+  if (!reply) {
+    res.writeHead(202, { "Cache-Control": "no-store" });
+    return res.end();
+  }
+  return json(res, 200, reply, { "MCP-Protocol-Version": protocolVersion === currentMcpProtocolVersion ? currentMcpProtocolVersion : "2025-11-25" });
+}
+
 function serveStatic(req, res, pathname) {
   const dist = join(root, "dist");
   const relative = pathname === "/" ? "index.html" : pathname.slice(1);
@@ -821,6 +915,7 @@ let activeTls = await loadTlsCertificate(appPaths.base);
 const server = createServer(activeTls, async (req, res) => {
   res.czLanguage = requestLanguage(req);
   const url = new URL(req.url, `https://${req.headers.host || "127.0.0.1"}`);
+  if (url.pathname === "/mcp") return handleMcp(req, res);
   if (url.pathname.startsWith("/api/")) return handleApi(req, res, url.pathname);
   if (isDev) return json(res, 404, { error: "Frontend läuft im Entwicklungsmodus auf Port 5173." });
   return serveStatic(req, res, url.pathname);
@@ -845,3 +940,5 @@ function scheduleListenHost(host) {
 }
 
 listen((await readSettings()).listenHost);
+
+if (!validMcpToken(mcpToken)) console.log(`Apfel-Hafen: Remote MCP is disabled; set APFEL_HAFEN_MCP_TOKEN or create ${mcpTokenPath}.`);

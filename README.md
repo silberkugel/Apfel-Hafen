@@ -49,8 +49,8 @@ for technical details.
 
 ### Ready-to-use release
 
-Every release contains the `Apfel-Hafen-0.2.8-macos-arm64.zip` server archive
-and the native macOS app as `Apfel-Hafen-0.2.8-macos-arm64.dmg`. The archive
+Every release contains the `Apfel-Hafen-0.2.9-macos-arm64.zip` server archive
+and the native macOS app as `Apfel-Hafen-0.2.9-macos-arm64.dmg`. The archive
 contains the required Node.js runtime, compiled PAM helper, and built web
 interface. Apple containers, images, volumes, and application data are not
 included. Extract the archive and run `Start-Apfel-Hafen.command`.
@@ -158,6 +158,63 @@ Certificates and private keys are stored outside the web interface under
 `~/Library/Application Support/Apfel-Hafen/tls/`. The private key is readable
 only by the account running the service. Plain HTTP connections are not
 accepted.
+
+## Hermes Agent via remote MCP
+
+Apfel-Hafen optionally provides a stateless Streamable HTTP MCP endpoint at
+`https://<address>:4173/mcp`. It is disabled by default. To enable it, provide a
+dedicated bearer token of at least 32 characters in `APFEL_HAFEN_MCP_TOKEN` at
+startup. For LaunchAgent operation, the token can instead be stored at
+`~/Library/Application Support/Apfel-Hafen/mcp-token`. The file must only be
+readable by the current user, for example:
+
+```console
+mkdir -p "$HOME/Library/Application Support/Apfel-Hafen"
+openssl rand -hex 32 > "$HOME/Library/Application Support/Apfel-Hafen/mcp-token"
+chmod 600 "$HOME/Library/Application Support/Apfel-Hafen/mcp-token"
+```
+
+Restart Apfel-Hafen after creating or replacing the token. The endpoint exposes
+only these tools:
+
+- `list_containers`
+- `get_container_status`
+- `get_container_logs`
+- `start_container`
+- `stop_container`
+- `restart_container`
+- `check_image_update`
+
+Shell access, deletion, creation, and changes to the host, LaunchD, or
+Apfel-Hafen settings are not available through MCP. Every MCP request requires
+`Authorization: Bearer <token>`. For access from another device, also enable
+network access in Apfel-Hafen and configure that device to trust the server
+certificate.
+
+Example `~/.hermes/config.yaml`:
+
+```yaml
+mcp_servers:
+  apfel_hafen:
+    url: "https://apfel-hafen.example:4173/mcp"
+    headers:
+      Authorization: "Bearer ${APFEL_HAFEN_MCP_TOKEN}"
+    tools:
+      include:
+        - list_containers
+        - get_container_status
+        - get_container_logs
+        - start_container
+        - stop_container
+        - restart_container
+        - check_image_update
+      resources: false
+      prompts: false
+```
+
+Protect the token like a password on the Hermes side and never commit it to the
+repository. MCP tool calls are written to the service log as structured audit
+entries without the token.
 
 Before replacing a container, Apfel-Hafen saves its configuration under
 `~/Library/Application Support/Apfel-Hafen/backups/<Containername>/` and

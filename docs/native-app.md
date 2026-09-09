@@ -23,6 +23,7 @@ Veränderliche Daten liegen nicht im signierten App-Bundle:
 
 ```text
 ~/Library/Application Support/Apfel-Hafen/
+├── mcp-token
 ├── settings.json
 ├── tls/
 └── backups/
