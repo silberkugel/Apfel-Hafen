@@ -1,7 +1,7 @@
 import { createServer } from "node:https";
 import { spawn } from "node:child_process";
 import { createReadStream, existsSync } from "node:fs";
-import { chmod, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { randomBytes } from "node:crypto";
 import { extname, isAbsolute, join, normalize, relative, resolve } from "node:path";
 import { homedir } from "node:os";
@@ -15,7 +15,9 @@ import { localListenHost, normalizeListenHost, requestMatchesOrigin } from "./li
 import { installCustomCertificate, loadTlsCertificate, removeCustomCertificate } from "./lib/tls-certificates.mjs";
 import { prepareApplicationData } from "./lib/app-paths.mjs";
 import { cleanupLaunchdService, createLaunchdService, executeLaunchdAction, findLaunchdService, listLaunchdServices, updateLaunchdService } from "./lib/launchd-services.mjs";
+import { OperationStore } from "./lib/operation-store.mjs";
 import { currentMcpProtocolVersion, dispatchMcpPayload, mcpBearerAuthorized, validMcpToken, validateModernMcpHeaders } from "./lib/mcp-server.mjs";
+import { buildImageArgs, builderActionArgs, imageActionArgs, parseImages, parseRegistryList, registryAction, safeLogOptions, validateImageReference } from "./lib/container-operations.mjs";
 
 const root = fileURLToPath(new URL(".", import.meta.url));
 const appPaths = await prepareApplicationData(root);
@@ -25,12 +27,16 @@ const sessionCookieName = isDev ? "apfel_dev_session" : "__Host-apfel_session";
 const sessionCookieAttributes = isDev
   ? "HttpOnly; SameSite=Strict; Path=/"
   : "Secure; HttpOnly; SameSite=Strict; Path=/";
-const containerCli = "/usr/local/bin/container";
+const containerCliCandidates = ["/usr/local/bin/container", "/opt/homebrew/bin/container", "/usr/bin/container"];
+const containerCli = containerCliCandidates.find((candidate) => existsSync(candidate)) || "/usr/local/bin/container";
 const pamHelper = join(root, "auth", "pam-auth");
 const checkedUpdates = new Map();
 const imageSearchCache = new Map();
 const sessions = new Map();
 const loginAttempts = new Map();
+const operationStore = new OperationStore(join(appPaths.base, "operations.json"), containerCli);
+await operationStore.load();
+let systemStoppedByUser = false;
 const sessionDurationMs = 30 * 60 * 1000;
 const mcpTokenPath = join(appPaths.base, "mcp-token");
 const mcpToken = await (async () => {
@@ -252,6 +258,28 @@ function runProcess(program, args, input = "", timeout = 30_000) {
   });
 }
 
+function streamContainerLogs(req, res, name, options, system = false) {
+  if (!currentSession(req)) return json(res, 401, { error: "Bitte als macOS-Administrator anmelden." });
+  const { tail, boot } = safeLogOptions(options);
+  if (!system && !/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$/.test(name)) throw new Error("Invalid container ID.");
+  const args = system ? ["system", "logs", "--follow"] : ["logs", "--follow", "-n", String(tail), ...(boot ? ["--boot"] : []), name];
+  res.writeHead(200, {
+    "Content-Type": "text/event-stream; charset=utf-8",
+    "Cache-Control": "no-store",
+    Connection: "keep-alive",
+    "X-Accel-Buffering": "no",
+  });
+  const child = spawn(containerCli, args, { shell: false });
+  const send = (event, value) => !res.destroyed && !res.writableEnded && res.write(`event: ${event}\ndata: ${JSON.stringify(String(value))}\n\n`);
+  child.stdout.on("data", (data) => send("log", data));
+  child.stderr.on("data", (data) => send("log", data));
+  child.on("error", (error) => { send("error", error.message); res.end(); });
+  child.on("close", (code) => { send("end", code); res.end(); });
+  const timer = setTimeout(() => child.kill("SIGTERM"), 10 * 60 * 1000);
+  const sessionTimer = setInterval(() => { if (!currentSession(req)) { child.kill("SIGTERM"); res.end(); } }, 5000);
+  res.on("close", () => { clearTimeout(timer); clearInterval(sessionTimer); if (!child.killed) child.kill("SIGTERM"); });
+}
+
 async function autostartStatus() {
   if (managedByApp) return { enabled: true, installed: true, running: true, configuredForCurrentInstallation: true, updatePending: false, managedByApp: true };
   const disabledResult = await runProcess("/bin/launchctl", ["print-disabled", serviceDomain]);
@@ -362,7 +390,7 @@ async function runContainer(args, timeout = 120_000) {
   try {
     return await runContainerOnce(args, timeout);
   } catch (error) {
-    if (args[0] === "system" || !/apiserver|connection|connect|not running|operation not permitted/i.test(error.message)) throw error;
+    if (systemStoppedByUser || args[0] === "system" || !/apiserver|connection|connect|not running|operation not permitted/i.test(error.message)) throw error;
     await recoverContainerSystem();
     return runContainerOnce(args, timeout);
   }
@@ -664,6 +692,16 @@ async function readBody(req) {
 
 async function handleApi(req, res, pathname) {
   try {
+    const snapshotMatch = pathname.match(/^\/api\/(?:system\/logs|containers\/([^/]+)\/logs)\/snapshot$/);
+    if (req.method === "GET" && snapshotMatch) {
+      if (!currentSession(req)) return json(res, 401, { error: "Bitte als macOS-Administrator anmelden." });
+      const url = new URL(req.url, "https://localhost");
+      const { tail, boot } = safeLogOptions({ tail: url.searchParams.get("tail") || 200, boot: url.searchParams.get("boot") === "1" });
+      const name = snapshotMatch[1] ? decodeURIComponent(snapshotMatch[1]) : "";
+      if (name && !/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$/.test(name)) throw new Error("Invalid container ID.");
+      const output = await runContainerOnce(name ? ["logs", "-n", String(tail), ...(boot ? ["--boot"] : []), name] : ["system", "logs", "--last", "5m"], 30_000);
+      return json(res, 200, { output: output.slice(-500_000) });
+    }
     if (req.method === "GET" && pathname === "/api/auth/session") {
       const session = currentSession(req);
       return json(res, 200, session
@@ -672,7 +710,39 @@ async function handleApi(req, res, pathname) {
     }
     if (req.method === "GET" && pathname === "/api/status") {
       const settings = await readSettings();
-      return json(res, 200, { protocol: "HTTPS", listenHost: settings.listenHost, certificateSource: activeTls.status.source });
+      return json(res, 200, { protocol: "HTTPS", listenHost: settings.listenHost, certificateSource: activeTls.status.source, containerCli });
+    }
+    if (req.method === "GET" && pathname === "/api/system/overview") {
+      if (!currentSession(req)) return json(res, 401, { error: "Bitte als macOS-Administrator anmelden." });
+      const [version, status, diskUsage, builder, registries, stats] = await Promise.allSettled([
+        runContainerOnce(["--version"], 10_000),
+        runContainerOnce(["system", "status"], 20_000),
+        runContainerOnce(["system", "df"], 30_000),
+        runContainerOnce(builderActionArgs("status"), 20_000),
+        runContainerOnce(["registry", "list", "--format", "json"], 20_000),
+        runContainerOnce(["stats", "--no-stream", "--format", "json"], 20_000),
+      ]);
+      const settled = (result) => result.status === "fulfilled" ? { output: result.value, error: "" } : { output: "", error: result.reason.message };
+      return json(res, 200, {
+        cliPath: containerCli,
+        cliAvailable: existsSync(containerCli),
+        version: settled(version), status: settled(status), diskUsage: settled(diskUsage), builder: settled(builder), stats: settled(stats),
+        registries: registries.status === "fulfilled" ? parseRegistryList(registries.value) : [],
+        registriesError: registries.status === "rejected" ? registries.reason.message : "",
+      });
+    }
+    if (req.method === "POST" && pathname === "/api/system/action") {
+      if (!requireLocalOrigin(req)) return json(res, 403, { error: "Systemaktionen sind nur von der lokalen Oberfläche erlaubt." });
+      if (!currentSession(req)) return json(res, 401, { error: "Bitte als macOS-Administrator anmelden." });
+      const action = String((await readBody(req)).action || "");
+      if (!["start", "stop"].includes(action)) return json(res, 400, { error: "Unbekannte Systemaktion." });
+      systemStoppedByUser = action === "stop";
+      const output = await runContainerOnce(["system", action], 120_000);
+      return json(res, 200, { ok: true, message: action === "start" ? "Apple-Container-System wurde gestartet." : "Apple-Container-System wurde gestoppt.", output });
+    }
+    if (req.method === "GET" && pathname === "/api/system/logs/stream") {
+      const url = new URL(req.url, `https://${req.headers.host || "127.0.0.1"}`);
+      return streamContainerLogs(req, res, "", { tail: url.searchParams.get("tail") || 200 }, true);
     }
     if (req.method === "POST" && pathname === "/api/auth/login") {
       if (!requireLocalOrigin(req)) return json(res, 403, { error: "Anmeldung ist nur von der lokalen Oberfläche erlaubt." });
@@ -790,6 +860,75 @@ async function handleApi(req, res, pathname) {
       if (!session) return json(res, 401, { error: "Bitte als macOS-Administrator anmelden." });
       return json(res, 200, { images: await imageNames() });
     }
+    if (req.method === "GET" && pathname === "/api/images/details") {
+      if (!currentSession(req)) return json(res, 401, { error: "Bitte als macOS-Administrator anmelden." });
+      return json(res, 200, { images: parseImages(await runContainer(["image", "list", "--format", "json"])) });
+    }
+    if (req.method === "GET" && pathname === "/api/operations") {
+      if (!currentSession(req)) return json(res, 401, { error: "Bitte als macOS-Administrator anmelden." });
+      return json(res, 200, { operations: operationStore.list() });
+    }
+    if (req.method === "POST" && pathname === "/api/operations") {
+      if (!requireLocalOrigin(req)) return json(res, 403, { error: "Operationen sind nur von der lokalen Oberfläche erlaubt." });
+      if (!currentSession(req)) return json(res, 401, { error: "Bitte als macOS-Administrator anmelden." });
+      const body = await readBody(req);
+      let args;
+      let input = "";
+      let label = "";
+      let cleanup = async () => {};
+      if (["image.pull", "image.push", "image.delete", "image.inspect"].includes(body.kind)) {
+        const action = body.kind.split(".")[1];
+        args = imageActionArgs(action, body);
+        if (action === "delete" && body.confirmation !== body.reference) throw new Error("Image deletion requires the exact reference as confirmation.");
+        label = `${action}: ${body.reference}`;
+      } else if (body.kind === "image.tag") {
+        args = imageActionArgs("tag", body);
+        label = `tag: ${body.source} → ${body.target}`;
+      } else if (body.kind === "image.build") {
+        args = buildImageArgs(body);
+        const contextInfo = await stat(args.at(-1));
+        if (!contextInfo.isDirectory()) return json(res, 400, { error: "Build-Kontext muss ein Ordner sein." });
+        if (body.dockerfileContent !== undefined) {
+          if (typeof body.dockerfileContent !== "string" || !body.dockerfileContent.trim() || Buffer.byteLength(body.dockerfileContent) > 200_000) throw new Error("Invalid Dockerfile content.");
+          const buildsPath = join(appPaths.base, "builds");
+          await mkdir(buildsPath, { recursive: true, mode: 0o700 });
+          const jobPath = await mkdtemp(join(buildsPath, "job-"));
+          const file = join(jobPath, "Dockerfile");
+          cleanup = () => rm(jobPath, { recursive: true, force: true });
+          try { await writeFile(file, body.dockerfileContent, { mode: 0o600 }); } catch (error) { await cleanup(); throw error; }
+          args.splice(1, 0, "--file", file);
+        }
+        label = `build: ${body.tag}`;
+      } else if (["registry.login", "registry.logout"].includes(body.kind)) {
+        const action = body.kind.split(".")[1];
+        const command = registryAction(action, body);
+        args = command.args;
+        input = command.input;
+        body.password = "";
+        label = `${action}: ${body.host}`;
+      } else {
+        return json(res, 400, { error: "Unbekannte Operation." });
+      }
+      try {
+        return json(res, 202, { operation: await operationStore.start(body.kind, label, args, { input, cleanup }) });
+      } catch (error) { await cleanup(); throw error; }
+    }
+    if (req.method === "POST" && pathname === "/api/builder/action") {
+      if (!requireLocalOrigin(req)) return json(res, 403, { error: "Builder-Aktionen sind nur von der lokalen Oberfläche erlaubt." });
+      if (!currentSession(req)) return json(res, 401, { error: "Bitte als macOS-Administrator anmelden." });
+      const body = await readBody(req);
+      const action = String(body.action || "");
+      return json(res, 202, { operation: await operationStore.start(`builder.${action}`, `builder: ${action}`, builderActionArgs(action, body)) });
+    }
+    const imageInspectMatch = pathname.match(/^\/api\/images\/inspect$/);
+    if (req.method === "POST" && imageInspectMatch) {
+      if (!currentSession(req)) return json(res, 401, { error: "Bitte als macOS-Administrator anmelden." });
+      const body = await readBody(req);
+      const output = await runContainer(imageActionArgs("inspect", body));
+      let inspection = output;
+      try { inspection = JSON.parse(output); } catch {}
+      return json(res, 200, { inspection });
+    }
     if (req.method === "GET" && pathname === "/api/images/search") {
       const session = currentSession(req);
       if (!session) return json(res, 401, { error: "Bitte als macOS-Administrator anmelden." });
@@ -821,6 +960,21 @@ async function handleApi(req, res, pathname) {
       const body = await readBody(req);
       if (body.name !== name) return json(res, 400, { error: "Containername stimmt nicht überein." });
       return json(res, 200, { ok: true, ...(await openContainerLogs(name)) });
+    }
+    const logStreamMatch = pathname.match(/^\/api\/containers\/([^/]+)\/logs\/stream$/);
+    if (req.method === "GET" && logStreamMatch) {
+      const url = new URL(req.url, `https://${req.headers.host || "127.0.0.1"}`);
+      return streamContainerLogs(req, res, decodeURIComponent(logStreamMatch[1]), { tail: url.searchParams.get("tail"), boot: url.searchParams.get("boot") === "1" });
+    }
+    const inspectMatch = pathname.match(/^\/api\/containers\/([^/]+)\/inspect$/);
+    if (req.method === "GET" && inspectMatch) {
+      if (!currentSession(req)) return json(res, 401, { error: "Bitte als macOS-Administrator anmelden." });
+      const name = decodeURIComponent(inspectMatch[1]);
+      if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$/.test(name)) throw new Error("Invalid container ID.");
+      const output = await runContainer(["inspect", name]);
+      let inspection = output;
+      try { inspection = JSON.parse(output); } catch {}
+      return json(res, 200, { inspection });
     }
     const settingsMatch = pathname.match(/^\/api\/containers\/([^/]+)\/settings$/);
     if (settingsMatch && ["GET", "PUT"].includes(req.method)) {
