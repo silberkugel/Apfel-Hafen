@@ -20,3 +20,12 @@ test("streams output and closes the connection when hidden or signed out", () =>
   expect(sources[0].close).toHaveBeenCalled();
   expect(screen.getByRole("button", { name: /Live folgen/ }).disabled).toBe(true);
 });
+
+test("opens privileged system logs in Terminal instead of starting log stream", () => {
+  const onSystemFollow = vi.fn();
+  render(<LiveLogViewer system url="/api/system/logs/stream" onSystemFollow={onSystemFollow} />);
+  fireEvent.click(screen.getByRole("button", { name: /Live im Terminal folgen/ }));
+  expect(onSystemFollow).toHaveBeenCalledOnce();
+  expect(screen.queryByRole("button", { name: /^Live folgen$/ })).toBeNull();
+  expect(screen.getByText(/Root-Freigabe/)).toBeTruthy();
+});

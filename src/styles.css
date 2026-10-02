@@ -113,7 +113,13 @@ h1 em { display: inline-block; font-family: Georgia, serif; font-size: .58em; fo
 .error { background: #f4e3df; border-color: #a74d3b; color: #702f23; }
 .success { background: #deebe4; border-color: #418164; color: #285641; }
 .empty { text-align: center; padding: 58px 15px; color: #7b837f; border-bottom: 1px solid #d4d6cf; }
-footer { max-width: 1360px; margin: 46px auto 0; padding: 24px clamp(22px, 5vw, 72px) 38px; border-top: 1px solid #d4d6cf; display: flex; justify-content: space-between; color: #848b87; font: 10px ui-monospace, SFMono-Regular, monospace; text-transform: uppercase; letter-spacing: .07em; }
+footer { max-width: 1360px; margin: 46px auto 0; padding: 24px clamp(22px, 5vw, 72px) 38px; border-top: 1px solid #d4d6cf; display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px 24px; color: #848b87; font: 10px ui-monospace, SFMono-Regular, monospace; text-transform: uppercase; letter-spacing: .07em; }
+.footer-status { display: inline-flex; align-items: center; gap: 7px; text-align: right; }
+.footer-status i { width: 7px; height: 7px; flex: 0 0 auto; border-radius: 50%; background: #2c9a68; box-shadow: 0 0 0 3px rgba(44, 154, 104, .12); }
+.footer-status.warning i { background: #c7892d; box-shadow: 0 0 0 3px rgba(199, 137, 45, .14); }
+.footer-status.critical i { background: #c84b4b; box-shadow: 0 0 0 3px rgba(200, 75, 75, .14); }
+.footer-status.loading i { background: #8a918d; box-shadow: none; animation: footer-pulse 1.2s ease-in-out infinite; }
+@keyframes footer-pulse { 50% { opacity: .35; transform: scale(.75); } }
 .backdrop { position: fixed; inset: 0; background: rgba(18,28,24,.48); backdrop-filter: blur(5px); display: grid; place-items: center; padding: 20px; z-index: 5; }
 .dialog { width: min(460px, 100%); background: #f8f7f3; border: 1px solid #cfd2cb; box-shadow: 0 24px 70px rgba(18,30,25,.24); padding: 38px; text-align: center; }
 .dialog.info-dialog { width: min(720px, 100%); max-height: min(86vh, 820px); overflow-y: auto; text-align: left; }

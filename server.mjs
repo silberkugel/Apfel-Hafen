@@ -1,10 +1,10 @@
 import { createServer } from "node:https";
 import { spawn } from "node:child_process";
 import { createReadStream, existsSync } from "node:fs";
-import { chmod, mkdtemp, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, mkdir, readFile, rm, stat, statfs, writeFile } from "node:fs/promises";
 import { randomBytes } from "node:crypto";
 import { extname, isAbsolute, join, normalize, relative, resolve } from "node:path";
-import { homedir } from "node:os";
+import { arch, cpus, homedir, loadavg, release, totalmem, uptime } from "node:os";
 import { fileURLToPath } from "node:url";
 import { disabledFromLaunchctl, launchAgentPlist, programFromLaunchctl } from "./lib/autostart.mjs";
 import { parseContainers } from "./lib/container-parser.mjs";
@@ -18,9 +18,11 @@ import { cleanupLaunchdService, createLaunchdService, executeLaunchdAction, find
 import { OperationStore } from "./lib/operation-store.mjs";
 import { currentMcpProtocolVersion, dispatchMcpPayload, mcpBearerAuthorized, validMcpToken, validateModernMcpHeaders } from "./lib/mcp-server.mjs";
 import { buildImageArgs, builderActionArgs, imageActionArgs, parseImages, parseRegistryList, registryAction, safeLogOptions, validateImageReference } from "./lib/container-operations.mjs";
+import { cpuTotals, cpuUsage, parseContainerDiskUsage, parseContainerStats, parseContainerSystemStatus, parseMemoryPressure, parseSwapUsage, parseThermalState, parseVmStat, recommendations } from "./lib/technology-metrics.mjs";
 
 const root = fileURLToPath(new URL(".", import.meta.url));
 const appPaths = await prepareApplicationData(root);
+const appVersion = JSON.parse(await readFile(join(root, "package.json"), "utf8")).version;
 const isDev = process.argv.includes("--dev");
 const port = Number(process.env.PORT || (isDev ? 4174 : 4173));
 const sessionCookieName = isDev ? "apfel_dev_session" : "__Host-apfel_session";
@@ -37,6 +39,9 @@ const loginAttempts = new Map();
 const operationStore = new OperationStore(join(appPaths.base, "operations.json"), containerCli);
 await operationStore.load();
 let systemStoppedByUser = false;
+let previousHostCpu = null;
+let previousContainerStats = new Map();
+const technologySnapshotCache = { value: null, createdAt: 0, pending: null };
 const sessionDurationMs = 30 * 60 * 1000;
 const mcpTokenPath = join(appPaths.base, "mcp-token");
 const mcpToken = await (async () => {
@@ -100,6 +105,9 @@ const englishMessages = new Map([
   ["Container wurde neu gestartet.", "The container was restarted."],
   ["Die Konsole ist nur für laufende Container verfügbar.", "The console is only available for running containers."],
   ["Das Terminalfenster konnte nicht geöffnet werden.", "The Terminal window could not be opened."],
+  ["Systemprotokoll wurde mit Root-Freigabe im Terminal geöffnet.", "The system log was opened in Terminal with root authorization."],
+  ["Systemprotokolle dürfen nur von der lokalen Oberfläche geöffnet werden.", "System logs may be opened only from the local interface."],
+  ["macOS benötigt für Live-Systemprotokolle eine zusätzliche Root-Freigabe. Bitte im Terminal öffnen.", "macOS requires additional root authorization for live system logs. Open them in Terminal."],
   ["Unbekannte Aktion.", "Unknown action."],
   ["Anfrage ist zu groß.", "The request is too large."],
   ["Anmeldung ist nur von der lokalen Oberfläche erlaubt.", "Sign-in is allowed only from the local interface."],
@@ -113,6 +121,11 @@ const englishMessages = new Map([
   ["Container dürfen nur von der lokalen Oberfläche erstellt werden.", "Containers may be created only from the local interface."],
   ["Container dürfen nur von der lokalen Oberfläche gelöscht werden.", "Containers may be deleted only from the local interface."],
   ["Verwaltungsaktionen sind nur von der lokalen Oberfläche erlaubt.", "Administrative actions are allowed only from the local interface."],
+  ["Bereinigungen sind nur von der lokalen Oberfläche erlaubt.", "Cleanup actions are allowed only from the local interface."],
+  ["Die Bereinigung wurde nicht bestätigt.", "The cleanup action was not confirmed."],
+  ["Gestoppte Container wurden bereinigt.", "Stopped containers were cleaned up."],
+  ["Ungenutzte Images wurden bereinigt.", "Unused images were cleaned up."],
+  ["Nicht referenzierte Volumes wurden bereinigt.", "Unreferenced volumes were cleaned up."],
   ["Containername stimmt nicht überein.", "The container name does not match."],
   ["Container ist nicht mehr vorhanden. Bitte Liste aktualisieren.", "The container no longer exists. Refresh the list."],
   ["Aktion wurde ausgeführt.", "The action was completed."],
@@ -242,6 +255,13 @@ async function openContainerLogs(name) {
     return String(value || "").slice(-100_000);
   };
   return { name, bootLog: readableLog(bootResult), outputLog: readableLog(outputResult) };
+}
+
+async function openSystemLogsTerminal() {
+  const command = `sudo ${shellQuote(containerCli)} system logs --follow`;
+  const result = await runProcess("/usr/bin/osascript", ["-e", `tell application "Terminal" to activate`, "-e", `tell application "Terminal" to do script ${JSON.stringify(command)}`]);
+  if (result.code !== 0) throw new Error(result.stderr || "Das Terminalfenster konnte nicht geöffnet werden.");
+  return { message: "Systemprotokoll wurde mit Root-Freigabe im Terminal geöffnet." };
 }
 
 function runProcess(program, args, input = "", timeout = 30_000) {
@@ -399,6 +419,119 @@ async function runContainer(args, timeout = 120_000) {
 async function currentState() {
   const output = await runContainer(["list", "--all", "--format", "json"]);
   return { records: JSON.parse(output || "[]"), containers: parseContainers(output) };
+}
+
+async function commandOutput(program, args) {
+  try {
+    const result = await runProcess(program, args, "", 15_000);
+    return [result.stdout, result.stderr].filter(Boolean).join("\n");
+  } catch (error) {
+    return `Error: ${error.message}`;
+  }
+}
+
+async function technologySnapshot() {
+  let currentCpu = cpuTotals(cpus());
+  const cpuBaseline = previousHostCpu || currentCpu;
+  if (!previousHostCpu) {
+    await new Promise((resolveDelay) => setTimeout(resolveDelay, 150));
+    currentCpu = cpuTotals(cpus());
+  }
+  const cpuPercent = cpuUsage(cpuBaseline, currentCpu);
+  previousHostCpu = currentCpu;
+
+  const [vmStatOutput, pressureOutput, swapOutput, thermalOutput, macosVersion, diskInfo, statusResult, listResult, statsResult, containerDiskResult] = await Promise.all([
+    commandOutput("/usr/bin/vm_stat", []),
+    commandOutput("/usr/bin/memory_pressure", ["-Q"]),
+    commandOutput("/usr/sbin/sysctl", ["-n", "vm.swapusage"]),
+    commandOutput("/usr/bin/pmset", ["-g", "therm"]),
+    commandOutput("/usr/bin/sw_vers", ["-productVersion"]),
+    statfs("/"),
+    runContainerOnce(["system", "status", "--format", "json"], 20_000).then((output) => ({ ok: true, output })).catch((error) => ({ ok: false, error: error.message })),
+    runContainerOnce(["list", "--all", "--format", "json"], 20_000).then((output) => ({ ok: true, output })).catch((error) => ({ ok: false, error: error.message })),
+    runContainerOnce(["stats", "--no-stream", "--format", "json"], 30_000).then((output) => ({ ok: true, output })).catch((error) => ({ ok: false, error: error.message })),
+    runContainerOnce(["system", "df", "--format", "json"], 30_000).then((output) => ({ ok: true, output })).catch((error) => ({ ok: false, error: error.message })),
+  ]);
+
+  const memory = parseMemoryPressure(pressureOutput, parseVmStat(vmStatOutput, totalmem()));
+  memory.swapUsedBytes = parseSwapUsage(swapOutput);
+  const diskTotalBytes = Number(diskInfo.blocks) * Number(diskInfo.bsize);
+  const diskFreeBytes = Number(diskInfo.bavail) * Number(diskInfo.bsize);
+  const disk = {
+    totalBytes: diskTotalBytes,
+    freeBytes: diskFreeBytes,
+    usedBytes: Math.max(0, diskTotalBytes - diskFreeBytes),
+    usedPercent: diskTotalBytes ? Math.round(((diskTotalBytes - diskFreeBytes) / diskTotalBytes) * 100) : 0,
+  };
+  const configuredContainers = listResult.ok ? parseContainers(listResult.output) : [];
+  const sampledAt = Date.now();
+  const parsedStats = statsResult.ok ? parseContainerStats(statsResult.output, previousContainerStats, sampledAt) : { stats: [], next: new Map() };
+  previousContainerStats = parsedStats.next;
+  const statsById = new Map(parsedStats.stats.map((item) => [item.id, item]));
+  const items = configuredContainers.map((container) => {
+    const measured = statsById.get(container.name) || {
+      cpuPercent: container.status === "running" ? null : 0,
+      memoryUsageBytes: 0,
+      memoryLimitBytes: 0,
+      networkRxBytes: 0,
+      networkTxBytes: 0,
+      blockReadBytes: 0,
+      blockWriteBytes: 0,
+      networkRxBytesPerSecond: 0,
+      networkTxBytesPerSecond: 0,
+      blockReadBytesPerSecond: 0,
+      blockWriteBytesPerSecond: 0,
+      numProcesses: 0,
+    };
+    return { ...container, ...measured, memoryLimitBytes: measured.memoryLimitBytes || container.memoryInBytes || 0 };
+  });
+  const containerDisk = containerDiskResult.ok ? parseContainerDiskUsage(containerDiskResult.output) : { resources: [], sizeBytes: 0, reclaimableBytes: 0 };
+  const snapshot = {
+    sampledAt: new Date(sampledAt).toISOString(),
+    host: {
+      memory,
+      cpu: { usedPercent: cpuPercent, loadAverage: loadavg(), logicalCores: cpus().length },
+      gpu: { available: false, reason: "unsupportedSystemMetric" },
+      neuralEngine: { available: false, reason: "notExposedToContainers" },
+      disk,
+      thermal: parseThermalState(thermalOutput),
+      system: { uptimeSeconds: uptime(), macosVersion: macosVersion.trim(), kernelRelease: release(), architecture: arch() },
+    },
+    containers: {
+      systemRunning: statusResult.ok && parseContainerSystemStatus(statusResult.output),
+      systemStatus: statusResult.ok ? statusResult.output : "",
+      error: statusResult.ok ? "" : statusResult.error,
+      total: items.length,
+      running: items.filter((item) => item.status === "running").length,
+      cpuPercent: Math.round(items.reduce((sum, item) => sum + (item.cpuPercent || 0), 0) * 10) / 10,
+      memoryUsageBytes: items.reduce((sum, item) => sum + (item.memoryUsageBytes || 0), 0),
+      memoryLimitBytes: items.reduce((sum, item) => sum + (item.memoryLimitBytes || 0), 0),
+      items,
+      disk: containerDisk,
+      statsError: statsResult.ok ? "" : statsResult.error,
+      diskError: containerDiskResult.ok ? "" : containerDiskResult.error,
+    },
+  };
+  snapshot.recommendations = recommendations(snapshot);
+  return snapshot;
+}
+
+async function cachedTechnologySnapshot() {
+  if (technologySnapshotCache.value && Date.now() - technologySnapshotCache.createdAt < 3_000) return technologySnapshotCache.value;
+  if (!technologySnapshotCache.pending) {
+    technologySnapshotCache.pending = technologySnapshot()
+      .then((value) => {
+        technologySnapshotCache.value = value;
+        technologySnapshotCache.createdAt = Date.now();
+        return value;
+      })
+      .finally(() => { technologySnapshotCache.pending = null; });
+  }
+  return technologySnapshotCache.pending;
+}
+
+function invalidateTechnologySnapshot() {
+  technologySnapshotCache.createdAt = 0;
 }
 
 function mcpContainerName(args) {
@@ -645,6 +778,7 @@ async function updateContainerSettings(name, input) {
     await runContainer(createArgs, 600_000);
     if (wasRunning) await runContainer(["start", name]);
     checkedUpdates.delete(name);
+    invalidateTechnologySnapshot();
     return { message: wasRunning ? "Einstellungen wurden übernommen und der Container wurde wieder gestartet." : "Einstellungen wurden übernommen.", backupPath };
   } catch (changeError) {
     if (!oldDeleted) throw new Error(`Änderung wurde vor dem Löschen abgebrochen: ${changeError.message}`);
@@ -661,6 +795,7 @@ async function updateContainerSettings(name, input) {
 }
 
 async function executeLifecycle(action, selected) {
+  invalidateTechnologySnapshot();
   if (action === "start") return runContainer(["start", selected.name]);
   if (action === "stop") return runContainer(["stop", selected.name]);
   if (action === "restart") {
@@ -710,7 +845,27 @@ async function handleApi(req, res, pathname) {
     }
     if (req.method === "GET" && pathname === "/api/status") {
       const settings = await readSettings();
-      return json(res, 200, { protocol: "HTTPS", listenHost: settings.listenHost, certificateSource: activeTls.status.source, containerCli });
+      return json(res, 200, { version: appVersion, protocol: "HTTPS", listenHost: settings.listenHost, certificateSource: activeTls.status.source, containerCli });
+    }
+    if (req.method === "GET" && pathname === "/api/technology/overview") {
+      if (!currentSession(req)) return json(res, 401, { error: "Bitte als macOS-Administrator anmelden." });
+      return json(res, 200, await cachedTechnologySnapshot());
+    }
+    if (req.method === "POST" && pathname === "/api/technology/prune") {
+      if (!requireLocalOrigin(req)) return json(res, 403, { error: "Bereinigungen sind nur von der lokalen Oberfläche erlaubt." });
+      if (!currentSession(req)) return json(res, 401, { error: "Bitte als macOS-Administrator anmelden." });
+      const body = await readBody(req);
+      const action = String(body.action || "");
+      if (!['containers', 'images', 'volumes'].includes(action) || body.confirmation !== action) return json(res, 400, { error: "Die Bereinigung wurde nicht bestätigt." });
+      const args = action === "containers" ? ["prune"] : action === "images" ? ["image", "prune", "--all"] : ["volume", "prune"];
+      const output = await runContainer(args, 300_000);
+      invalidateTechnologySnapshot();
+      const messages = {
+        containers: "Gestoppte Container wurden bereinigt.",
+        images: "Ungenutzte Images wurden bereinigt.",
+        volumes: "Nicht referenzierte Volumes wurden bereinigt.",
+      };
+      return json(res, 200, { ok: true, message: messages[action], output });
     }
     if (req.method === "GET" && pathname === "/api/system/overview") {
       if (!currentSession(req)) return json(res, 401, { error: "Bitte als macOS-Administrator anmelden." });
@@ -738,11 +893,17 @@ async function handleApi(req, res, pathname) {
       if (!["start", "stop"].includes(action)) return json(res, 400, { error: "Unbekannte Systemaktion." });
       systemStoppedByUser = action === "stop";
       const output = await runContainerOnce(["system", action], 120_000);
+      invalidateTechnologySnapshot();
       return json(res, 200, { ok: true, message: action === "start" ? "Apple-Container-System wurde gestartet." : "Apple-Container-System wurde gestoppt.", output });
     }
     if (req.method === "GET" && pathname === "/api/system/logs/stream") {
-      const url = new URL(req.url, `https://${req.headers.host || "127.0.0.1"}`);
-      return streamContainerLogs(req, res, "", { tail: url.searchParams.get("tail") || 200 }, true);
+      if (!currentSession(req)) return json(res, 401, { error: "Bitte als macOS-Administrator anmelden." });
+      return json(res, 409, { error: "macOS benötigt für Live-Systemprotokolle eine zusätzliche Root-Freigabe. Bitte im Terminal öffnen." });
+    }
+    if (req.method === "POST" && pathname === "/api/system/logs/terminal") {
+      if (!requireLocalOrigin(req)) return json(res, 403, { error: "Systemprotokolle dürfen nur von der lokalen Oberfläche geöffnet werden." });
+      if (!currentSession(req)) return json(res, 401, { error: "Bitte als macOS-Administrator anmelden." });
+      return json(res, 200, await openSystemLogsTerminal());
     }
     if (req.method === "POST" && pathname === "/api/auth/login") {
       if (!requireLocalOrigin(req)) return json(res, 403, { error: "Anmeldung ist nur von der lokalen Oberfläche erlaubt." });

@@ -20,3 +20,7 @@ struct RuntimeSettings: Codable {
   var volumeBasePath: String
   var listenHost: String
 }
+
+struct ServerStatus: Decodable {
+  var version: String?
+}

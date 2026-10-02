@@ -15,6 +15,7 @@ test("Finder commands control the LaunchAgent instead of a foreground server", a
 test("release archive contains the service controller", async () => {
   const release = await readFile(new URL("../scripts/build-release.sh", import.meta.url), "utf8");
   assert.match(release, /ditto service-control\.mjs/);
+  assert.match(release, /ditto package\.json/);
 });
 
 test("administration save shows temporary button and toast feedback", async () => {
@@ -22,6 +23,13 @@ test("administration save shows temporary button and toast feedback", async () =
   assert.match(source, /setTimeout\(\(\) => \{[\s\S]*?\}, 3000\)/);
   assert.match(source, /className="settings-toast"/);
   assert.match(source, /administrationSaved \? `✓ \$\{t\("savedShort"\)\}`/);
+});
+
+test("tools navigation is presented as the workshop", async () => {
+  const source = await readFile(new URL("../src/main.jsx", import.meta.url), "utf8");
+  assert.match(source, /tools: "Werkstatt"/);
+  assert.match(source, /tools: "Workshop"/);
+  assert.doesNotMatch(source, /tools: "Werkzeuge"|tools: "Tools"/);
 });
 
 test("global help opens the harbor master getting-started guide", async () => {
@@ -88,6 +96,20 @@ test("native app bundle uses SMAppService without an embedded browser", async ()
   assert.doesNotMatch(app, /WKWebView|WebKit/);
 });
 
+test("native app refreshes an outdated bundled background service", async () => {
+  const [store, server, runScript] = await Promise.all([
+    readFile(new URL("../MacApp/Sources/ApfelHafen/Stores/AppStore.swift", import.meta.url), "utf8"),
+    readFile(new URL("../server.mjs", import.meta.url), "utf8"),
+    readFile(new URL("../script/build_and_run.sh", import.meta.url), "utf8"),
+  ]);
+  assert.match(server, /version: appVersion/);
+  assert.match(store, /serviceUpdateRequired = serverReachable && serverVersion != bundleVersion/);
+  assert.match(store, /activateBundledServiceIfNeeded/);
+  assert.match(store, /serviceUpdateRequired \|\| !serverReachable/);
+  assert.match(store, /try service\.register\(\)/);
+  assert.match(runScript, /pkill -x ApfelHafenService/);
+});
+
 test("LaunchAgent creation exposes all four launchd start options", async () => {
   const client = await readFile(new URL("../src/LaunchdScheduleOptions.jsx", import.meta.url), "utf8");
 
@@ -109,16 +131,16 @@ test("existing user LaunchAgents can be edited through the protected API", async
   assert.match(client, /launchdDraftFromService/);
 });
 
-test("release 0.3.0 metadata and artifact names stay aligned", async () => {
+test("release 0.3.1 metadata and artifact names stay aligned", async () => {
   const [packageSource, readmeDe, readmeEn, releaseNotes] = await Promise.all([
     readFile(new URL("../package.json", import.meta.url), "utf8"),
     readFile(new URL("../README-DE.md", import.meta.url), "utf8"),
     readFile(new URL("../README.md", import.meta.url), "utf8"),
-    readFile(new URL("../RELEASE-NOTES-0.3.0.md", import.meta.url), "utf8"),
+    readFile(new URL("../RELEASE-NOTES-0.3.1.md", import.meta.url), "utf8"),
   ]);
 
-  assert.equal(JSON.parse(packageSource).version, "0.3.0");
-  assert.match(readmeDe, /Apfel-Hafen-0\.3\.0-macos-arm64\.zip/);
-  assert.match(readmeEn, /Apfel-Hafen-0\.3\.0-macos-arm64\.dmg/);
-  assert.match(releaseNotes, /^# Apfel-Hafen 0\.3\.0$/m);
+  assert.equal(JSON.parse(packageSource).version, "0.3.1");
+  assert.match(readmeDe, /Apfel-Hafen-0\.3\.1-macos-arm64\.zip/);
+  assert.match(readmeEn, /Apfel-Hafen-0\.3\.1-macos-arm64\.dmg/);
+  assert.match(releaseNotes, /^# Apfel-Hafen 0\.3\.1$/m);
 });

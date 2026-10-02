@@ -10,6 +10,7 @@ APP_BINARY="$APP_BUNDLE/Contents/MacOS/$APP_NAME"
 
 pkill -x "$APP_NAME" >/dev/null 2>&1 || true
 zsh "$ROOT_DIR/scripts/build-app.sh"
+pkill -x ApfelHafenService >/dev/null 2>&1 || true
 
 open_app() {
   /usr/bin/open -n "$APP_BUNDLE"
