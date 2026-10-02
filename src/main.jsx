@@ -30,7 +30,7 @@ const translations = {
     secret: "Vertraulich", summary: "Zusammenfassung", deleteTitle: "Container endgültig löschen", typeName: "Zur Bestätigung den Containernamen eingeben",
     deleteVolumes: "Zugehörige Volume-Daten im globalen Pfad ebenfalls löschen", deleteWarning: "Diese Aktion kann nicht rückgängig gemacht werden.",
     adminRequired: "Administrator-Anmeldung erforderlich", confirmAction: "Aktion bestätigen", language: "Sprache", help: "Erste Schritte", noVolumes: "Keine Volumes eingebunden.",
-    noPorts: "Keine Ports veröffentlicht.", cpu: "CPU-Kerne", memory: "Arbeitsspeicher", containerInfo: "Container-Informationen", technology: "Technik", tools: "Werkzeuge", darkMode: "Darstellung wechseln", inspectJson: "JSON untersuchen",
+    noPorts: "Keine Ports veröffentlicht.", cpu: "CPU-Kerne", memory: "Arbeitsspeicher", containerInfo: "Container-Informationen", technology: "Technik", tools: "Werkstatt", darkMode: "Darstellung wechseln", inspectJson: "JSON untersuchen",
   },
   en: {
     appName: "Apfel-Hafen", local: "Only on this Mac", login: "Sign in", logout: "Sign out", administration: "Administration", create: "Create container", username: "Username", password: "Password",
@@ -52,7 +52,7 @@ const translations = {
     secret: "Sensitive", summary: "Summary", deleteTitle: "Permanently delete container", typeName: "Enter the container name to confirm",
     deleteVolumes: "Also delete associated volume data inside the global path", deleteWarning: "This action cannot be undone.",
     adminRequired: "Administrator sign-in required", confirmAction: "Confirm action", language: "Language", help: "Getting started", noVolumes: "No volumes mounted.",
-    noPorts: "No ports published.", cpu: "CPU cores", memory: "Memory", containerInfo: "Container information", technology: "Technology", tools: "Tools", darkMode: "Toggle appearance", inspectJson: "Inspect JSON",
+    noPorts: "No ports published.", cpu: "CPU cores", memory: "Memory", containerInfo: "Container information", technology: "Technology", tools: "Workshop", darkMode: "Toggle appearance", inspectJson: "Inspect JSON",
   },
 };
 

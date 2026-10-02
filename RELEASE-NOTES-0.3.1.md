@@ -1,6 +1,7 @@
 # Apfel-Hafen 0.3.1
 
 Version 0.3.1 ergänzt die Dienstzentrale um einen eigenständigen Reiter „Technik“.
+Der bisherige Reiter „Werkzeuge“ heißt passend zum Hafenbild nun „Werkstatt“.
 
 ## Technik-Zentrale
 

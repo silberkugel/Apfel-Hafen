@@ -25,6 +25,13 @@ test("administration save shows temporary button and toast feedback", async () =
   assert.match(source, /administrationSaved \? `✓ \$\{t\("savedShort"\)\}`/);
 });
 
+test("tools navigation is presented as the workshop", async () => {
+  const source = await readFile(new URL("../src/main.jsx", import.meta.url), "utf8");
+  assert.match(source, /tools: "Werkstatt"/);
+  assert.match(source, /tools: "Workshop"/);
+  assert.doesNotMatch(source, /tools: "Werkzeuge"|tools: "Tools"/);
+});
+
 test("global help opens the harbor master getting-started guide", async () => {
   const source = await readFile(new URL("../src/main.jsx", import.meta.url), "utf8");
   assert.match(source, /className="help-button"/);
