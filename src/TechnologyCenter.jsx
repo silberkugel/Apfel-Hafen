@@ -3,7 +3,7 @@ import "./technology.css";
 
 const copy = {
   de: {
-    title: "Technik-Zentrale", intro: "Host und Apple Container auf einen Blick.", refresh: "Neu laden", updated: "Aktualisiert", signIn: "Für Live-Metriken und Verwaltungsaktionen ist eine Administrator-Anmeldung erforderlich.",
+    title: "Technik-Zentrale", intro: "Host und Apple Container auf einen Blick.", refresh: "Neu laden", loading: "Messwerte werden geladen", retry: "Erneut versuchen", updated: "Aktualisiert", signIn: "Für Live-Metriken und Verwaltungsaktionen ist eine Administrator-Anmeldung erforderlich.",
     memory: "Memory", pressure: "Druck", normal: "Niedrig", thermalNormal: "Normal", warning: "Erhöht", critical: "Kritisch", unavailable: "Nicht verfügbar", cpu: "CPU", load: "Load", cores: "Kerne", gpu: "GPU / ANE", noPassthrough: "Nicht für Container durchgereicht", ssd: "SSD", free: "frei", used: "belegt", thermal: "Thermal", noThrottling: "Keine Drosselung erkannt", noSensor: "Keine verlässlichen Sensordaten", system: "System", uptime: "Laufzeit",
     appleContainer: "Apple Container", running: "Läuft", stopped: "Gestoppt", active: "aktiv", reclaimable: "rückgewinnbar", containers: "Container", container: "Container", limit: "Limit", network: "Netzwerk", blockIo: "Block-I/O", processes: "Prozesse", actions: "Aktionen", start: "Starten", stop: "Stoppen", restart: "Neustart", details: "Details", noStats: "Noch keine Messung", current: "Aktuell", readWrite: "Lesen / Schreiben", receiveSend: "Empfang / Versand", configured: "Konfiguriert", image: "Image", close: "Schließen",
     limits: "Ressourcenlimits", editLimits: "CPU/RAM ändern", cpus: "CPU-Kerne", memoryMb: "Arbeitsspeicher (MB)", downtime: "Der laufende Container wird geprüft, kurz gestoppt, neu erstellt und anschließend wieder gestartet.", acknowledge: "Ich habe die kurze Unterbrechung verstanden.", apply: "Änderungen anwenden", applying: "Wird angewendet …",
@@ -11,7 +11,7 @@ const copy = {
     recommendations: "Hinweise", memoryPressure: "Der Speicherdruck ist erhöht. Container-Limits prüfen und macOS ausreichend Reserve lassen.", diskSpace: "Der freie SSD-Speicher wird knapp. Nicht mehr benötigte Container-Ressourcen prüfen.", reclaimableStorage: "Apple Container kann mindestens 1 GB Speicher zurückgewinnen.", overcommittedMemory: "Die Summe der Container-Limits lässt weniger als 10 % RAM-Reserve für macOS.", noRecommendations: "Keine aktuellen Warnungen.",
   },
   en: {
-    title: "Technology Center", intro: "Host and Apple Container at a glance.", refresh: "Refresh", updated: "Updated", signIn: "Administrator sign-in is required for live metrics and management actions.",
+    title: "Technology Center", intro: "Host and Apple Container at a glance.", refresh: "Refresh", loading: "Loading metrics", retry: "Try again", updated: "Updated", signIn: "Administrator sign-in is required for live metrics and management actions.",
     memory: "Memory", pressure: "Pressure", normal: "Low", thermalNormal: "Normal", warning: "Elevated", critical: "Critical", unavailable: "Unavailable", cpu: "CPU", load: "Load", cores: "cores", gpu: "GPU / ANE", noPassthrough: "Not exposed to containers", ssd: "SSD", free: "free", used: "used", thermal: "Thermal", noThrottling: "No throttling detected", noSensor: "No reliable sensor data", system: "System", uptime: "Uptime",
     appleContainer: "Apple Container", running: "Running", stopped: "Stopped", active: "active", reclaimable: "reclaimable", containers: "Containers", container: "Container", limit: "Limit", network: "Network", blockIo: "Block I/O", processes: "Processes", actions: "Actions", start: "Start", stop: "Stop", restart: "Restart", details: "Details", noStats: "Waiting for next sample", current: "Current", readWrite: "Read / write", receiveSend: "Receive / send", configured: "Configured", image: "Image", close: "Close",
     limits: "Resource limits", editLimits: "Change CPU/RAM", cpus: "CPU cores", memoryMb: "Memory (MB)", downtime: "The running container is checked, briefly stopped, recreated, and then started again.", acknowledge: "I understand the brief interruption.", apply: "Apply changes", applying: "Applying …",
@@ -55,12 +55,13 @@ export default function TechnologyCenter({ request, language, authenticated, act
   const t = (key) => copy[language]?.[key] || copy.de[key] || key;
   const [snapshot, setSnapshot] = useState(null);
   const [history, setHistory] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState(null);
   const [settings, setSettings] = useState(null);
   const [editing, setEditing] = useState(false);
   const [acknowledged, setAcknowledged] = useState(false);
   const [busy, setBusy] = useState("");
+  const [loadError, setLoadError] = useState("");
   const runningRequest = useRef(false);
 
   const load = async (showSpinner = false) => {
@@ -69,6 +70,7 @@ export default function TechnologyCenter({ request, language, authenticated, act
     if (showSpinner) setLoading(true);
     try {
       const next = await request("/api/technology/overview");
+      setLoadError("");
       setSnapshot(next);
       setHistory((value) => [...value, {
         at: next.sampledAt,
@@ -77,7 +79,7 @@ export default function TechnologyCenter({ request, language, authenticated, act
         disk: next.host.disk.usedPercent,
       }].slice(-180));
       setSelected((value) => value ? next.containers.items.find((item) => item.name === value.name) || null : null);
-    } catch (error) { onError(error.message); }
+    } catch (error) { setLoadError(error.message); onError(error.message); }
     finally { runningRequest.current = false; setLoading(false); }
   };
 
@@ -146,7 +148,7 @@ export default function TechnologyCenter({ request, language, authenticated, act
   const sortedContainers = useMemo(() => [...(snapshot?.containers.items || [])].sort((left, right) => (right.cpuPercent || 0) - (left.cpuPercent || 0)), [snapshot]);
 
   if (!authenticated) return <section className="panel protected-panel technology-protected"><h2>{t("title")}</h2><p>{t("signIn")}</p></section>;
-  if (!snapshot) return <section className="panel technology-center"><div className="technology-title"><div><p className="eyebrow">Monitoring</p><h2>{t("title")}</h2></div><span className="technology-loading">{t("refresh")} …</span></div></section>;
+  if (!snapshot) return <section className="panel technology-center"><div className="technology-title"><div><p className="eyebrow">Monitoring</p><h2>{t("title")}</h2></div><div><span className="technology-loading">{loading ? `${t("loading")} …` : loadError}</span>{loadError && <button onClick={() => load(true)}>↻ {t("retry")}</button>}</div></div></section>;
 
   return <section className="panel technology-center">
     <div className="technology-title"><div><p className="eyebrow">Monitoring</p><h2>{t("title")}</h2><p>{t("intro")}</p></div><div><small>{t("updated")}: {new Date(snapshot.sampledAt).toLocaleTimeString(language === "de" ? "de-DE" : "en-US")}</small><button onClick={() => load(true)} disabled={loading}>↻ {t("refresh")}</button></div></div>

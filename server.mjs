@@ -104,6 +104,9 @@ const englishMessages = new Map([
   ["Container wurde neu gestartet.", "The container was restarted."],
   ["Die Konsole ist nur für laufende Container verfügbar.", "The console is only available for running containers."],
   ["Das Terminalfenster konnte nicht geöffnet werden.", "The Terminal window could not be opened."],
+  ["Systemprotokoll wurde mit Root-Freigabe im Terminal geöffnet.", "The system log was opened in Terminal with root authorization."],
+  ["Systemprotokolle dürfen nur von der lokalen Oberfläche geöffnet werden.", "System logs may be opened only from the local interface."],
+  ["macOS benötigt für Live-Systemprotokolle eine zusätzliche Root-Freigabe. Bitte im Terminal öffnen.", "macOS requires additional root authorization for live system logs. Open them in Terminal."],
   ["Unbekannte Aktion.", "Unknown action."],
   ["Anfrage ist zu groß.", "The request is too large."],
   ["Anmeldung ist nur von der lokalen Oberfläche erlaubt.", "Sign-in is allowed only from the local interface."],
@@ -251,6 +254,13 @@ async function openContainerLogs(name) {
     return String(value || "").slice(-100_000);
   };
   return { name, bootLog: readableLog(bootResult), outputLog: readableLog(outputResult) };
+}
+
+async function openSystemLogsTerminal() {
+  const command = `sudo ${shellQuote(containerCli)} system logs --follow`;
+  const result = await runProcess("/usr/bin/osascript", ["-e", `tell application "Terminal" to activate`, "-e", `tell application "Terminal" to do script ${JSON.stringify(command)}`]);
+  if (result.code !== 0) throw new Error(result.stderr || "Das Terminalfenster konnte nicht geöffnet werden.");
+  return { message: "Systemprotokoll wurde mit Root-Freigabe im Terminal geöffnet." };
 }
 
 function runProcess(program, args, input = "", timeout = 30_000) {
@@ -886,8 +896,13 @@ async function handleApi(req, res, pathname) {
       return json(res, 200, { ok: true, message: action === "start" ? "Apple-Container-System wurde gestartet." : "Apple-Container-System wurde gestoppt.", output });
     }
     if (req.method === "GET" && pathname === "/api/system/logs/stream") {
-      const url = new URL(req.url, `https://${req.headers.host || "127.0.0.1"}`);
-      return streamContainerLogs(req, res, "", { tail: url.searchParams.get("tail") || 200 }, true);
+      if (!currentSession(req)) return json(res, 401, { error: "Bitte als macOS-Administrator anmelden." });
+      return json(res, 409, { error: "macOS benötigt für Live-Systemprotokolle eine zusätzliche Root-Freigabe. Bitte im Terminal öffnen." });
+    }
+    if (req.method === "POST" && pathname === "/api/system/logs/terminal") {
+      if (!requireLocalOrigin(req)) return json(res, 403, { error: "Systemprotokolle dürfen nur von der lokalen Oberfläche geöffnet werden." });
+      if (!currentSession(req)) return json(res, 401, { error: "Bitte als macOS-Administrator anmelden." });
+      return json(res, 200, await openSystemLogsTerminal());
     }
     if (req.method === "POST" && pathname === "/api/auth/login") {
       if (!requireLocalOrigin(req)) return json(res, 403, { error: "Anmeldung ist nur von der lokalen Oberfläche erlaubt." });

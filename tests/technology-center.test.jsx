@@ -42,4 +42,15 @@ describe("TechnologyCenter", () => {
     render(<TechnologyCenter request={vi.fn()} language="en" authenticated={false} active onNotice={() => {}} onError={() => {}} />);
     expect(screen.getByText(/Administrator sign-in/)).toBeTruthy();
   });
+
+  test("keeps the last snapshot and refreshes when the tab is opened again", async () => {
+    const request = vi.fn().mockResolvedValue(snapshot);
+    const view = render(<TechnologyCenter request={request} language="de" authenticated active onNotice={() => {}} onError={() => {}} />);
+    await waitFor(() => expect(screen.getByText("71 %")).toBeTruthy());
+    view.rerender(<TechnologyCenter request={request} language="de" authenticated active={false} onNotice={() => {}} onError={() => {}} />);
+    expect(screen.getByText("71 %")).toBeTruthy();
+    view.rerender(<TechnologyCenter request={request} language="de" authenticated active onNotice={() => {}} onError={() => {}} />);
+    await waitFor(() => expect(request).toHaveBeenCalledTimes(2));
+    expect(screen.queryByText(/Messwerte werden geladen/)).toBeNull();
+  });
 });

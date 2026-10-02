@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { filterLogText } from "./log-filter.mjs";
 
-export default function LiveLogViewer({ url, language = "de", title = "Logs", system = false, enabled = true }) {
+export default function LiveLogViewer({ url, language = "de", title = "Logs", system = false, enabled = true, onSystemFollow }) {
   const de = language === "de";
   const [lines, setLines] = useState("");
   const [filter, setFilter] = useState("");
@@ -72,15 +72,16 @@ export default function LiveLogViewer({ url, language = "de", title = "Logs", sy
     <div className="log-toolbar">
       {!system && <><label>{de ? "Zeilen" : "Lines"}<input type="number" min="1" max="5000" value={tail} onChange={(event) => setTail(event.target.value)} /></label><label><input type="checkbox" checked={boot} onChange={(event) => setBoot(event.target.checked)} />Boot</label></>}
       <label className="log-filter">⌕<input value={filter} onChange={(event) => setFilter(event.target.value)} placeholder={de ? "Ausgabe filtern" : "Filter output"} /></label>
-      <button disabled={!enabled || !validTail} onClick={snapshot}>{de ? "Laden" : "Load"}</button>
-      <button disabled={!enabled || !validTail} className={following ? "danger" : "primary"} onClick={following ? stop : start}>{following ? `■ ${de ? "Anhalten" : "Stop"}` : `▶ ${de ? "Live folgen" : "Follow live"}`}</button>
+      {!system && <button disabled={!enabled || !validTail} onClick={snapshot}>{de ? "Laden" : "Load"}</button>}
+      {!system && <button disabled={!enabled || !validTail} className={following ? "danger" : "primary"} onClick={following ? stop : start}>{following ? `■ ${de ? "Anhalten" : "Stop"}` : `▶ ${de ? "Live folgen" : "Follow live"}`}</button>}
+      {system && <button disabled={!enabled || !onSystemFollow} className="primary" onClick={onSystemFollow}>↗ {de ? "Live im Terminal folgen" : "Follow live in Terminal"}</button>}
       <button onClick={() => setLines("")}>{de ? "Leeren" : "Clear"}</button>
       <button disabled={!visible} onClick={download}>⇩ {de ? "Exportieren" : "Export"}</button>
     </div>
     <div className="log-toolbar"><label>{de ? "Seit" : "Since"}<input type="datetime-local" value={since} onChange={(event) => setSince(event.target.value)} /></label><label>{de ? "Bis" : "Until"}<input type="datetime-local" value={until} onChange={(event) => setUntil(event.target.value)} /></label></div>
     {(since || until) && <p>{de ? "Zeitfilter zeigen nur geladene Zeilen mit erkennbarem Zeitstempel. Zeiten ohne Zeitzone gelten lokal." : "Time filters show only loaded lines with a recognizable timestamp. Times without a timezone are local."}</p>}
-    {system && <p>{de ? "Systemprotokoll: letzte fünf Minuten und anschließende Live-Ausgabe." : "System log: last five minutes followed by live output."}</p>}
+    {system && <p>{de ? "macOS erlaubt den Live-Zugriff auf das Systemprotokoll nur mit zusätzlicher Root-Freigabe. Der Terminal-Aufruf fragt diese Freigabe sicher über sudo ab." : "macOS permits live system-log access only with additional root authorization. The Terminal command requests it securely through sudo."}</p>}
     {error && <div className="message error" role="alert">{error}</div>}
-    <pre ref={outputRef} className="live-log-output">{visible || (de ? "Noch keine Ausgabe. Live-Folge starten." : "No output yet. Start live follow.")}</pre>
+    {!system && <pre ref={outputRef} className="live-log-output">{visible || (de ? "Noch keine Ausgabe. Live-Folge starten." : "No output yet. Start live follow.")}</pre>}
   </section>;
 }
