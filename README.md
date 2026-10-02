@@ -14,6 +14,8 @@ account. The password is verified through PAM and is not stored.
 
 ![Apfel-Hafen web interface in English](docs/images/apfel-hafen-ui_EN.png)
 
+![Apfel-Hafen Technology Center](docs/images/apfel-hafen-technology_EN.png)
+
 ## Languages
 
 The interface supports German and English. On first launch, it uses the
@@ -49,8 +51,8 @@ for technical details.
 
 ### Ready-to-use release
 
-Every release contains the `Apfel-Hafen-0.3.0-macos-arm64.zip` server archive
-and the native macOS app as `Apfel-Hafen-0.3.0-macos-arm64.dmg`. The archive
+Every release contains the `Apfel-Hafen-0.3.1-macos-arm64.zip` server archive
+and the native macOS app as `Apfel-Hafen-0.3.1-macos-arm64.dmg`. The archive
 contains the required Node.js runtime, compiled PAM helper, and built web
 interface. Apple containers, images, volumes, and application data are not
 included. Extract the archive and run `Start-Apfel-Hafen.command`.
@@ -133,6 +135,14 @@ certificate and a restrictive macOS firewall configuration.
 The service center lists Apple containers as well as user and system LaunchD
 services with their current status. Status information can be viewed without
 signing in; system LaunchD services remain read-only.
+
+After administrator sign-in, the **Technology Center** shows CPU, memory and
+memory pressure, SSD usage, thermal state, system uptime, and live resource
+usage for each Apple container. GPU and Neural Engine are explicitly marked as
+unavailable while macOS and Apple Container do not expose dependable metrics.
+CPU and RAM limits can be changed through the protected container recreation
+flow. Stopped containers, unused images, and unreferenced volumes can also be
+cleaned up after confirmation.
 
 For administrative actions, sign in with a local macOS administrator account.
 The following functions are then available:

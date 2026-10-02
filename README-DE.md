@@ -14,6 +14,8 @@ geprüft und nicht gespeichert.
 
 ![Deutsche Weboberfläche von Apfel-Hafen](docs/images/apfel-hafen-ui_DE.png)
 
+![Technik-Zentrale von Apfel-Hafen](docs/images/apfel-hafen-technology_DE.png)
+
 ## Sprachen
 
 Die Oberfläche unterstützt Deutsch und Englisch. Beim ersten Start wird die
@@ -48,8 +50,8 @@ Browser. Technische Details stehen unter [docs/native-app.md](docs/native-app.md
 
 ### Fertige Auslieferung
 
-Jedes Release enthält das Server-Archiv `Apfel-Hafen-0.3.0-macos-arm64.zip`
-und die native macOS-App als `Apfel-Hafen-0.3.0-macos-arm64.dmg`. Das Archiv
+Jedes Release enthält das Server-Archiv `Apfel-Hafen-0.3.1-macos-arm64.zip`
+und die native macOS-App als `Apfel-Hafen-0.3.1-macos-arm64.dmg`. Das Archiv
 enthält die benötigte Node.js-Laufzeit, das kompilierte PAM-Hilfsprogramm und
 die gebaute Weboberfläche. Apple-Container, Images, Volumes und Anwendungsdaten
 sind nicht enthalten. Archiv entpacken und `Start-Apfel-Hafen.command` starten.
@@ -133,6 +135,15 @@ macOS-Firewall-Konfiguration verwendet werden.
 Die Dienstzentrale zeigt alle Apple-Container sowie benutzer- und systembezogene
 LaunchD-Dienste mit ihrem aktuellen Status. Statusinformationen können ohne
 Anmeldung angesehen werden; systemweite LaunchD-Dienste bleiben schreibgeschützt.
+
+Die **Technik-Zentrale** zeigt nach der Administratoranmeldung CPU, Arbeitsspeicher
+und Speicherdruck, SSD-Belegung, thermischen Zustand, Systemlaufzeit sowie die
+Ressourcennutzung jedes laufenden Apple-Containers. GPU und Neural Engine werden
+bewusst als nicht verfügbar gekennzeichnet, solange macOS beziehungsweise Apple
+Container keine verlässlichen Messwerte bereitstellen. CPU- und RAM-Limits können
+aus der Detailansicht kontrolliert geändert werden. Zusätzlich lassen sich
+gestoppte Container, ungenutzte Images und nicht referenzierte Volumes nach einer
+Bestätigung bereinigen.
 
 Für schreibende Aktionen melden Sie sich mit einem lokalen
 macOS-Administratorkonto an. Danach stehen folgende Funktionen bereit:
