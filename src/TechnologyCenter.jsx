@@ -51,7 +51,7 @@ function MetricCard({ icon, title, value, detail, state = "normal", values, chil
   </article>;
 }
 
-export default function TechnologyCenter({ request, language, authenticated, active, onNotice, onError }) {
+export default function TechnologyCenter({ request, language, authenticated, active, onNotice, onError, onSnapshot }) {
   const t = (key) => copy[language]?.[key] || copy.de[key] || key;
   const [snapshot, setSnapshot] = useState(null);
   const [history, setHistory] = useState([]);
@@ -72,6 +72,7 @@ export default function TechnologyCenter({ request, language, authenticated, act
       const next = await request("/api/technology/overview");
       setLoadError("");
       setSnapshot(next);
+      onSnapshot?.(next);
       setHistory((value) => [...value, {
         at: next.sampledAt,
         memory: next.host.memory.usedPercent,

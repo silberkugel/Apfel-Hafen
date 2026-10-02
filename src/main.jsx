@@ -5,6 +5,7 @@ import OperationsConsole from "./OperationsConsole.jsx";
 import LiveLogViewer from "./LiveLogViewer.jsx";
 import AdvancedContainerOptions from "./AdvancedContainerOptions.jsx";
 import TechnologyCenter from "./TechnologyCenter.jsx";
+import { footerStatus } from "./footer-status.mjs";
 import "./styles.css";
 import "./tools.css";
 
@@ -115,6 +116,9 @@ function App() {
   const [updates, setUpdates] = useState({});
   const [auth, setAuth] = useState({ authenticated: false });
   const [runtimeStatus, setRuntimeStatus] = useState({ protocol: "HTTPS", listenHost: "127.0.0.1", certificateSource: "fallback" });
+  const [serviceConnected, setServiceConnected] = useState(null);
+  const [lastUpdated, setLastUpdated] = useState({ containers: null, launchd: null, technology: null, tools: null });
+  const [technologyStatus, setTechnologyStatus] = useState(null);
   const [loginOpen, setLoginOpen] = useState(false);
   const [loginForm, setLoginForm] = useState({ username: "", password: "" });
   const [loginError, setLoginError] = useState("");
@@ -150,18 +154,25 @@ function App() {
   useEffect(() => { document.documentElement.lang = language; document.title = t("appName"); }, [language]);
   useEffect(() => { document.documentElement.dataset.theme = theme; localStorage.setItem("apfel-hafen.theme", theme); }, [theme]);
   async function request(url, options) {
-    const response = await fetch(url, { ...options, headers: { ...(options?.headers || {}), "X-App-Language": language } });
+    let response;
+    try {
+      response = await fetch(url, { ...options, headers: { ...(options?.headers || {}), "X-App-Language": language } });
+      setServiceConnected(true);
+    } catch (error) {
+      setServiceConnected(false);
+      throw error;
+    }
     const data = await response.json();
     if (!response.ok) { if (response.status === 401) setAuth({ authenticated: false }); throw new Error(data.error); }
     return data;
   }
   async function load() {
     setLoading(true); setError("");
-    try { setContainers((await request("/api/containers")).containers); } catch (err) { setError(err.message); } finally { setLoading(false); }
+    try { const data = await request("/api/containers"); setContainers(data.containers); setLastUpdated((value) => ({ ...value, containers: data.refreshedAt || new Date().toISOString() })); } catch (err) { setError(err.message); } finally { setLoading(false); }
   }
   async function loadServices() {
     setServicesLoading(true); setServicesError("");
-    try { setServices((await request("/api/services/launchd")).services); } catch (err) { setServicesError(err.message); } finally { setServicesLoading(false); }
+    try { const data = await request("/api/services/launchd"); setServices(data.services); setLastUpdated((value) => ({ ...value, launchd: data.refreshedAt || new Date().toISOString() })); } catch (err) { setServicesError(err.message); } finally { setServicesLoading(false); }
   }
   const loadRuntimeStatus = () => request("/api/status").then(setRuntimeStatus).catch(() => {});
   useEffect(() => { load(); loadServices(); loadRuntimeStatus(); request("/api/auth/session").then(setAuth).catch(() => setAuth({ authenticated: false })); }, []);
@@ -422,6 +433,7 @@ function App() {
   const sectionIntro = section === "containers" ? t("intro") : section === "technology" ? (language === "de" ? "Ressourcen, Zustand und Reserven dieses Macs überwachen." : "Monitor this Mac's resources, health, and headroom.") : section === "tools" ? (language === "de" ? "Images, Builds, Registry und Systemvorgänge verwalten." : "Manage images, builds, registries, and system operations.") : t("serviceIntro");
   const summaryTotal = section === "launchd" ? services.length : containers.length;
   const summaryActive = section === "launchd" ? runningServices : running;
+  const footer = footerStatus({ section, connected: serviceConnected, loading: section === "containers" ? loading : section === "launchd" ? servicesLoading : section === "technology" ? !technologyStatus : false, containers, services, technology: technologyStatus, updatedAt: lastUpdated, language });
 
   return <main>
     <header className="hero"><div><p className="eyebrow">{t("serviceCenter")}</p><h1>{sectionTitle}</h1><p className="intro">{sectionIntro}</p></div><div className="hero-aside">
@@ -433,14 +445,14 @@ function App() {
       {error && <div className="message error" role="alert">{error}</div>}{notice && <div className="message success" role="status">{notice}</div>}
       <div className="list">{filtered.map((container) => <article className={`row ${updates[container.name]?.available ? "has-update" : ""}`} key={container.name}><div className="identity"><div className={`cube ${container.status}`}>◇</div><div><h3>{container.name}{updates[container.name]?.available && <span className="update-badge">{t("update")}</span>}</h3><p><i className={container.status} />{container.status === "running" ? t("running") : t("stopped")}{container.image ? ` · ${container.image}` : ""}</p></div></div><div className="actions"><button className="info-button" onClick={() => setInfo(container)}>ⓘ {t("info")}</button>{container.status !== "running" && <button disabled={!auth.authenticated} onClick={() => setConfirm({ container, action: "start" })}>▶ {t("start")}</button>}{container.status === "running" && <button disabled={!auth.authenticated} onClick={() => setConfirm({ container, action: "stop" })}>■ {t("stop")}</button>}<button disabled={!auth.authenticated} onClick={() => setConfirm({ container, action: "restart" })}>↻ {t("restart")}</button>{updates[container.name]?.available && <button className="replace" onClick={() => setConfirm({ container, action: "replace", update: updates[container.name] })}>⇄ {t("replace")}</button>}<div className="container-menu"><button className="container-menu-trigger" aria-label={`${t("moreActions")}: ${container.name}`} aria-haspopup="menu" aria-expanded={containerMenuOpen === container.name} onClick={() => setContainerMenuOpen((value) => value === container.name ? null : container.name)}>•••</button>{containerMenuOpen === container.name && <div className="container-dropdown" role="menu"><button role="menuitem" disabled={!auth.authenticated} onClick={() => openContainerLogs(container)}>≡ {t("containerLogsLabel")}</button><button role="menuitem" disabled={!auth.authenticated || container.status !== "running"} onClick={() => openContainerConsole(container)}>▸_ {t("console")}</button><button role="menuitem" disabled={!auth.authenticated} onClick={() => inspectContainer(container)}>{t("inspectJson")}</button><button role="menuitem" disabled={!auth.authenticated} onClick={() => openContainerSettings(container)}>⚙ {t("settings")}</button><button role="menuitem" disabled={!auth.authenticated} onClick={() => { setContainerMenuOpen(null); checkUpdate(container); }}>↓ {t("check")}</button><button role="menuitem" className="danger-item" disabled={!auth.authenticated} onClick={() => { setContainerMenuOpen(null); setDeleteTarget(container); setDeleteForm({ confirmation: "", deleteVolumes: false }); }}>⌫ {t("delete")}</button></div>}</div></div>{busy.startsWith(`${container.name}:`) && <div className="working">{t("loading")}</div>}</article>)}{!loading && !filtered.length && <div className="empty">{t("noMatches")}</div>}</div>
     </section>}
-    <div hidden={section !== "technology"}>{section === "technology" && <div className="panel">{error && <div className="message error" role="alert">{error}</div>}{notice && <div className="message success" role="status">{notice}</div>}</div>}<TechnologyCenter active={section === "technology"} request={request} language={language} authenticated={auth.authenticated} onNotice={setNotice} onError={setError} /></div>
+    <div hidden={section !== "technology"}>{section === "technology" && <div className="panel">{error && <div className="message error" role="alert">{error}</div>}{notice && <div className="message success" role="status">{notice}</div>}</div>}<TechnologyCenter active={section === "technology"} request={request} language={language} authenticated={auth.authenticated} onNotice={setNotice} onError={setError} onSnapshot={(snapshot) => { const status = { sampledAt: snapshot.sampledAt, systemRunning: snapshot.containers.systemRunning, running: snapshot.containers.running }; setTechnologyStatus(status); setLastUpdated((value) => ({ ...value, technology: snapshot.sampledAt, tools: snapshot.sampledAt })); }} /></div>
 <div hidden={section !== "tools"}>{section === "tools" && <div className="panel">{error && <div className="message error" role="alert">{error}</div>}{notice && <div className="message success" role="status">{notice}</div>}</div>}<OperationsConsole active={section === "tools"} request={request} language={language} authenticated={auth.authenticated} onNotice={setNotice} onError={setError} /></div>
     {section === "launchd" && <section className="panel"><div className="section-title container-list-header"><h2>{t("launchd")}</h2><label className="search">⌕<input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t("serviceSearch")} /></label><div className="toolbar-actions">{auth.authenticated && <button className="primary create-button" onClick={() => { setServiceEditing(null); setServiceDraft(emptyLaunchdDraft()); setServiceCreateError(""); setServiceCreateOpen(true); }}>＋ {t("createService")}</button>}<button className="refresh" onClick={loadServices} disabled={servicesLoading}>↻ {servicesLoading ? t("loading") : t("reload")}</button></div></div>
       <p className="scope-note">ⓘ {t("manualOnly")}</p>{servicesError && <div className="message error" role="alert">{servicesError}</div>}{notice && <div className="message success" role="status">{notice}</div>}
       {filteredServices.some((service) => service.canCleanup) && <section className="cleanup-panel"><div><strong>⚠ {t("orphaned")}</strong><p>{t("orphanedHint")}</p></div><div>{filteredServices.filter((service) => service.canCleanup).map((service) => <button key={service.id} disabled={!auth.authenticated} onClick={() => setServiceConfirm({ service, action: "cleanup" })}>⌫ {service.label} · {t("cleanup")}</button>)}</div></section>}
       <div className="list">{filteredServices.map((service) => <article className="row service-row" key={service.id}><div className="identity"><div className={`cube ${service.running ? "running" : "stopped"}`}>⚙</div><div><h3>{service.label}<span className={`scope-badge ${service.scope}`}>{t(service.scope === "user" ? "userScope" : "systemScope")}</span></h3><p><i className={service.running ? "running" : "stopped"} />{service.running ? t("running") : service.loaded ? t("loaded") : t("unloaded")} · {service.kind}{service.pid ? ` · PID ${service.pid}` : ""}</p></div></div><div className="actions"><button className="info-button" onClick={() => setServiceInfo(service)}>ⓘ {t("info")}</button>{service.canEdit && <button disabled={!auth.authenticated} onClick={() => editService(service)}>✎ {t("editService")}</button>}{service.canManage && !service.running && <button disabled={!auth.authenticated} onClick={() => setServiceConfirm({ service, action: "start" })}>▶ {t("start")}</button>}{service.canManage && service.loaded && <button disabled={!auth.authenticated} onClick={() => setServiceConfirm({ service, action: "stop" })}>■ {t("stop")}</button>}{service.canManage && service.loaded && <button disabled={!auth.authenticated} onClick={() => setServiceConfirm({ service, action: "restart" })}>↻ {t("restart")}</button>}{!service.canManage && <span className="readonly-badge">🔒 {t("readOnly")}</span>}</div>{busy === `launchd:${service.id}` && <div className="working">{t("loading")}</div>}</article>)}{!servicesLoading && !filteredServices.length && <div className="empty">{t("noServiceMatches")}</div>}</div>
     </section>}
-    <footer><span>{section === "launchd" ? "macOS LaunchD" : section === "technology" ? "macOS · Apple Container" : "Apple Container CLI"}</span><span>{runtimeStatus.protocol} · {runtimeStatus.listenHost === "0.0.0.0" ? t("networkAccess") : t("localAccess")} · {runtimeStatus.certificateSource === "custom" ? t("customCertificate") : t("automaticCertificate")}</span></footer>
+    <footer><span>{section === "launchd" ? "macOS LaunchD" : section === "technology" ? "macOS · Apple Container" : "Apple Container CLI"}</span><span className={`footer-status ${footer.tone}`} role="status" aria-live="polite"><i />{footer.text}</span></footer>
 
     {confirm && <Modal onClose={() => setConfirm(null)}><p className="eyebrow">{t("confirmAction")}</p><h2>{t(confirm.action === "replace" ? "replace" : confirm.action)}?</h2><p>„{confirm.container.name}“</p><div><button className="cancel" onClick={() => setConfirm(null)}>{t("cancel")}</button><button className="primary" onClick={execute}>{t(confirm.action === "replace" ? "replace" : confirm.action)}</button></div></Modal>}
     {serviceConfirm && <Modal onClose={() => setServiceConfirm(null)}><p className="eyebrow">{t("confirmAction")}</p><h2>{t(serviceConfirm.action)}?</h2><p>„{serviceConfirm.service.label}“</p><div><button className="cancel" onClick={() => setServiceConfirm(null)}>{t("cancel")}</button><button className="primary" onClick={executeServiceAction}>{t(serviceConfirm.action)}</button></div></Modal>}

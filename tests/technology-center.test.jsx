@@ -27,8 +27,10 @@ const snapshot = {
 describe("TechnologyCenter", () => {
   test("shows the six host tiles and Apple Container table", async () => {
     const request = vi.fn().mockResolvedValue(snapshot);
-    render(<TechnologyCenter request={request} language="de" authenticated active onNotice={() => {}} onError={() => {}} />);
+    const onSnapshot = vi.fn();
+    render(<TechnologyCenter request={request} language="de" authenticated active onNotice={() => {}} onError={() => {}} onSnapshot={onSnapshot} />);
     await waitFor(() => expect(screen.getByText("71 %")).toBeTruthy());
+    expect(onSnapshot).toHaveBeenCalledWith(snapshot);
     expect(screen.getByText("Memory")).toBeTruthy();
     expect(screen.getByText("GPU / ANE")).toBeTruthy();
     expect(screen.getByText("SSD")).toBeTruthy();

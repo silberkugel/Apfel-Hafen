@@ -20,6 +20,7 @@ Version 0.3.1 ergänzt die Dienstzentrale um einen eigenständigen Reiter „Tec
 - Technikdaten und sämtliche Aktionen erfordern eine Administrator-Sitzung. Schreibende Aktionen bleiben auf die lokale Oberfläche begrenzt.
 - Live-Systemprotokolle werden wegen der zusätzlichen macOS-Root-Anforderung sicher im Terminal geöffnet; die notwendige Freigabe erfolgt dort über `sudo`, ohne das Apfel-Hafen-Anmeldepasswort zu speichern oder weiterzugeben.
 - Die Technik-Zentrale behält beim Reiterwechsel den letzten Messstand bei und aktualisiert ihn beim erneuten Öffnen, statt erneut mit einer leeren Ansicht zu beginnen.
+- Die Fußzeile zeigt nun je nach Reiter den Verbindungszustand, aktive Container oder LaunchD-Dienste, den Apple-Container-Zustand und die letzte erfolgreiche Aktualisierung.
 
 ## Kompatibilität
 
