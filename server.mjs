@@ -22,6 +22,7 @@ import { cpuTotals, cpuUsage, parseContainerDiskUsage, parseContainerStats, pars
 
 const root = fileURLToPath(new URL(".", import.meta.url));
 const appPaths = await prepareApplicationData(root);
+const appVersion = JSON.parse(await readFile(join(root, "package.json"), "utf8")).version;
 const isDev = process.argv.includes("--dev");
 const port = Number(process.env.PORT || (isDev ? 4174 : 4173));
 const sessionCookieName = isDev ? "apfel_dev_session" : "__Host-apfel_session";
@@ -844,7 +845,7 @@ async function handleApi(req, res, pathname) {
     }
     if (req.method === "GET" && pathname === "/api/status") {
       const settings = await readSettings();
-      return json(res, 200, { protocol: "HTTPS", listenHost: settings.listenHost, certificateSource: activeTls.status.source, containerCli });
+      return json(res, 200, { version: appVersion, protocol: "HTTPS", listenHost: settings.listenHost, certificateSource: activeTls.status.source, containerCli });
     }
     if (req.method === "GET" && pathname === "/api/technology/overview") {
       if (!currentSession(req)) return json(res, 401, { error: "Bitte als macOS-Administrator anmelden." });

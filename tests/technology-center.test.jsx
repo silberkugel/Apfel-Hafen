@@ -55,4 +55,12 @@ describe("TechnologyCenter", () => {
     await waitFor(() => expect(request).toHaveBeenCalledTimes(2));
     expect(screen.queryByText(/Messwerte werden geladen/)).toBeNull();
   });
+
+  test("explains an outdated background service after sign-in", async () => {
+    const onError = vi.fn();
+    render(<TechnologyCenter request={vi.fn().mockRejectedValue(new Error("Nicht gefunden."))} language="de" authenticated active onNotice={() => {}} onError={onError} />);
+    await waitFor(() => expect(screen.getByText(/älteren App-Version/)).toBeTruthy());
+    expect(onError).toHaveBeenCalledWith(expect.stringMatching(/neu starten/));
+    expect(screen.getByRole("button", { name: /Erneut versuchen/ })).toBeTruthy();
+  });
 });

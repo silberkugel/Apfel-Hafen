@@ -15,6 +15,7 @@ test("Finder commands control the LaunchAgent instead of a foreground server", a
 test("release archive contains the service controller", async () => {
   const release = await readFile(new URL("../scripts/build-release.sh", import.meta.url), "utf8");
   assert.match(release, /ditto service-control\.mjs/);
+  assert.match(release, /ditto package\.json/);
 });
 
 test("administration save shows temporary button and toast feedback", async () => {
@@ -86,6 +87,20 @@ test("native app bundle uses SMAppService without an embedded browser", async ()
   assert.match(service, /SMAppService\.agent/);
   assert.match(plist, /<key>BundleProgram<\/key>/);
   assert.doesNotMatch(app, /WKWebView|WebKit/);
+});
+
+test("native app refreshes an outdated bundled background service", async () => {
+  const [store, server, runScript] = await Promise.all([
+    readFile(new URL("../MacApp/Sources/ApfelHafen/Stores/AppStore.swift", import.meta.url), "utf8"),
+    readFile(new URL("../server.mjs", import.meta.url), "utf8"),
+    readFile(new URL("../script/build_and_run.sh", import.meta.url), "utf8"),
+  ]);
+  assert.match(server, /version: appVersion/);
+  assert.match(store, /serviceUpdateRequired = serverReachable && serverVersion != bundleVersion/);
+  assert.match(store, /activateBundledServiceIfNeeded/);
+  assert.match(store, /serviceUpdateRequired \|\| !serverReachable/);
+  assert.match(store, /try service\.register\(\)/);
+  assert.match(runScript, /pkill -x ApfelHafenService/);
 });
 
 test("LaunchAgent creation exposes all four launchd start options", async () => {

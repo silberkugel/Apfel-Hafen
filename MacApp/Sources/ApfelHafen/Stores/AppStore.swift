@@ -12,6 +12,7 @@ final class AppStore {
   var containerCLIAvailable = false
   var containerServiceRunning = false
   var serverReachable = false
+  var serviceUpdateRequired = false
   var volumeBasePath = ""
   var networkAccess = false
   var isWorking = false
@@ -33,8 +34,28 @@ final class AppStore {
     serviceState = service.state
     containerCLIAvailable = fileManager.isExecutableFile(atPath: "/usr/local/bin/container")
     containerServiceRunning = (try? ProcessRunner.run("/usr/local/bin/container", ["system", "status"], timeout: 5))?.contains("running") == true
-    serverReachable = (try? ProcessRunner.run("/usr/bin/curl", ["--insecure", "--silent", "--fail", "--max-time", "2", "https://127.0.0.1:4173/api/status"], timeout: 4)) != nil
+    let statusOutput = try? ProcessRunner.run("/usr/bin/curl", ["--insecure", "--silent", "--fail", "--max-time", "2", "https://127.0.0.1:4173/api/status"], timeout: 4)
+    serverReachable = statusOutput != nil
+    let serverVersion = statusOutput
+      .flatMap { $0.data(using: .utf8) }
+      .flatMap { try? JSONDecoder().decode(ServerStatus.self, from: $0).version }
+    let bundleVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
+    serviceUpdateRequired = serverReachable && serverVersion != bundleVersion
     loadSettings()
+  }
+
+  func activateBundledServiceIfNeeded() {
+    refresh()
+    guard serviceState == .running, serviceUpdateRequired || !serverReachable else { return }
+    isWorking = true
+    defer { isWorking = false; refresh() }
+    do {
+      try service.register()
+      message = "Der aktuelle Hintergrunddienst wurde aktiviert."
+      errorMessage = ""
+    } catch {
+      errorMessage = "Der Hintergrunddienst konnte nicht aktualisiert werden: \(error.localizedDescription)"
+    }
   }
 
   func chooseVolumePath() {

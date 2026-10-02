@@ -18,7 +18,7 @@ struct ContentView: View {
       .frame(maxWidth: .infinity)
     }
     .background(.background.secondary)
-    .task { store.refresh() }
+    .task { store.activateBundledServiceIfNeeded() }
   }
 
   private var header: some View {
@@ -59,7 +59,7 @@ struct ContentView: View {
           statusDot(store.serverReachable ? .green : .orange)
           VStack(alignment: .leading) {
             Text(store.serviceState.title).font(.headline)
-            Text(store.serverReachable ? "Weboberfläche ist erreichbar" : "Dienst startet oder benötigt Aufmerksamkeit")
+            Text(store.serviceUpdateRequired ? "Hintergrunddienst wird auf die aktuelle App-Version gebracht" : store.serverReachable ? "Weboberfläche ist erreichbar" : "Dienst startet oder benötigt Aufmerksamkeit")
               .font(.callout).foregroundStyle(.secondary)
           }
           Spacer()

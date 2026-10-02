@@ -80,7 +80,12 @@ export default function TechnologyCenter({ request, language, authenticated, act
         disk: next.host.disk.usedPercent,
       }].slice(-180));
       setSelected((value) => value ? next.containers.items.find((item) => item.name === value.name) || null : null);
-    } catch (error) { setLoadError(error.message); onError(error.message); }
+    } catch (error) {
+      const message = /^(Nicht gefunden\.?|Not found\.?)$/i.test(error.message)
+        ? (language === "de" ? "Der Hintergrunddienst gehört zu einer älteren App-Version. Bitte Apfel-Hafen einmal neu starten." : "The background service belongs to an older app version. Restart Apfel-Hafen once.")
+        : error.message;
+      setLoadError(message); onError(message);
+    }
     finally { runningRequest.current = false; setLoading(false); }
   };
 
