@@ -131,16 +131,30 @@ test("existing user LaunchAgents can be edited through the protected API", async
   assert.match(client, /launchdDraftFromService/);
 });
 
-test("release 0.3.1 metadata and artifact names stay aligned", async () => {
+test("0.3.2 release metadata and download names are aligned", async () => {
   const [packageSource, readmeDe, readmeEn, releaseNotes] = await Promise.all([
     readFile(new URL("../package.json", import.meta.url), "utf8"),
     readFile(new URL("../README-DE.md", import.meta.url), "utf8"),
     readFile(new URL("../README.md", import.meta.url), "utf8"),
-    readFile(new URL("../RELEASE-NOTES-0.3.1.md", import.meta.url), "utf8"),
+    readFile(new URL("../RELEASE-NOTES-0.3.2.md", import.meta.url), "utf8"),
   ]);
 
-  assert.equal(JSON.parse(packageSource).version, "0.3.1");
-  assert.match(readmeDe, /Apfel-Hafen-0\.3\.1-macos-arm64\.zip/);
-  assert.match(readmeEn, /Apfel-Hafen-0\.3\.1-macos-arm64\.dmg/);
-  assert.match(releaseNotes, /^# Apfel-Hafen 0\.3\.1$/m);
+  assert.equal(JSON.parse(packageSource).version, "0.3.2");
+  assert.match(readmeDe, /Apfel-Hafen-0\.3\.2-macos-arm64\.zip/);
+  assert.match(readmeEn, /Apfel-Hafen-0\.3\.2-macos-arm64\.dmg/);
+  assert.match(releaseNotes, /^# Apfel-Hafen 0\.3\.2$/m);
+  assert.doesNotMatch(releaseNotes, /in Entwicklung/);
+});
+
+test("container creation offers OpenCode images with version and release date", async () => {
+  const [server, client] = await Promise.all([
+    readFile(new URL("../server.mjs", import.meta.url), "utf8"),
+    readFile(new URL("../src/main.jsx", import.meta.url), "utf8"),
+  ]);
+  assert.match(server, /source === "opencode" \? await searchOpenCodeImages/);
+  assert.match(server, /registry\/repositories/);
+  assert.match(client, /imageSource === "opencode"/);
+  assert.match(client, /formatReleaseDate\(result\.releasedAt, language\)/);
+  assert.match(client, /t\("version"\)/);
+  assert.match(client, /t\("released"\)/);
 });

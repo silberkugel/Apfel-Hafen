@@ -23,11 +23,14 @@ test("normalizes full Docker Hub references for search", () => {
   assert.deepEqual(dockerHubSearchInput("docker.io/nousresearch/hermes-agent:latest"), {
     query: "nousresearch/hermes-agent",
     directReference: {
+      source: "dockerhub",
       name: "nousresearch/hermes-agent",
       reference: "docker.io/nousresearch/hermes-agent:latest",
       description: "Direkte Image-Referenz",
       official: false,
       direct: true,
+      version: "latest",
+      releasedAt: null,
       pulls: 0,
       stars: 0,
     },

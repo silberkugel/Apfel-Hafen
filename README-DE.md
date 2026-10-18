@@ -50,8 +50,8 @@ Browser. Technische Details stehen unter [docs/native-app.md](docs/native-app.md
 
 ### Fertige Auslieferung
 
-Jedes Release enthält das Server-Archiv `Apfel-Hafen-0.3.1-macos-arm64.zip`
-und die native macOS-App als `Apfel-Hafen-0.3.1-macos-arm64.dmg`. Das Archiv
+Jedes Release enthält das Server-Archiv `Apfel-Hafen-0.3.2-macos-arm64.zip`
+und die native macOS-App als `Apfel-Hafen-0.3.2-macos-arm64.dmg`. Das Archiv
 enthält die benötigte Node.js-Laufzeit, das kompilierte PAM-Hilfsprogramm und
 die gebaute Weboberfläche. Apple-Container, Images, Volumes und Anwendungsdaten
 sind nicht enthalten. Archiv entpacken und `Start-Apfel-Hafen.command` starten.
@@ -151,7 +151,9 @@ macOS-Administratorkonto an. Danach stehen folgende Funktionen bereit:
 - Container starten, stoppen und neu starten
 - Start- und Containerprotokolle direkt in der Oberfläche anzeigen
 - für laufende Container eine interaktive Konsole im Terminal öffnen
-- Container mit Image-Suche, Portfreigaben, Volumes und Umgebungsvariablen erstellen
+- Container mit Image-Suche, Portfreigaben, Volumes und Umgebungsvariablen erstellen;
+  als Quellen stehen Docker Hub und die öffentliche OpenCode Container Registry
+  zur Verfügung
 - Container nach Eingabe ihres Namens sicher löschen; optional können die von
   Apfel-Hafen verwalteten Volume-Daten mitgelöscht werden
 - nach einer neueren Version des verwendeten Images suchen
@@ -166,6 +168,14 @@ macOS-Administratorkonto an. Danach stehen folgende Funktionen bereit:
 - ein eigenes PEM-Serverzertifikat mit passendem privaten Schlüssel aktivieren
   oder wieder auf das automatisch erzeugte Zertifikat zurückschalten
 - LaunchAgent installieren oder aktualisieren und den Autostart ändern
+
+Die OpenCode-Suche akzeptiert Suchbegriffe, Projektpfade und vollständige
+Projekt-URLs. Bei einem versionierten Setup-Projekt wie
+`https://gitlab.opencode.de/opentalk/ot-setup` erkennt Apfel-Hafen die darin
+referenzierten OpenCode-Images. In der Auswahlliste werden Image-Version,
+Veröffentlichungsdatum und – falls zutreffend – die Version des Setup-Projekts
+angezeigt. Ein Compose-Repository selbst wird dabei nicht fälschlich als
+einzelnes Image angeboten.
 
 Zertifikate und private Schlüssel werden unter
 `~/Library/Application Support/Apfel-Hafen/tls/` außerhalb der Weboberfläche
