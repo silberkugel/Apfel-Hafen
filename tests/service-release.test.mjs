@@ -134,19 +134,21 @@ test("existing user LaunchAgents can be edited through the protected API", async
   assert.match(client, /launchdDraftFromService/);
 });
 
-test("0.3.3 release metadata and published download names are aligned", async () => {
-  const [packageSource, readmeDe, readmeEn, releaseNotes] = await Promise.all([
+test("0.3.4 development metadata and published download names are aligned", async () => {
+  const [packageSource, readmeDe, readmeEn, publishedNotes, developmentNotes] = await Promise.all([
     readFile(new URL("../package.json", import.meta.url), "utf8"),
     readFile(new URL("../README-DE.md", import.meta.url), "utf8"),
     readFile(new URL("../README.md", import.meta.url), "utf8"),
     readFile(new URL("../RELEASE-NOTES-0.3.3.md", import.meta.url), "utf8"),
+    readFile(new URL("../RELEASE-NOTES-0.3.4.md", import.meta.url), "utf8"),
   ]);
 
-  assert.equal(JSON.parse(packageSource).version, "0.3.3");
+  assert.equal(JSON.parse(packageSource).version, "0.3.4");
   assert.match(readmeDe, /Apfel-Hafen-0\.3\.3-macos-arm64\.zip/);
   assert.match(readmeEn, /Apfel-Hafen-0\.3\.3-macos-arm64\.dmg/);
-  assert.match(releaseNotes, /^# Apfel-Hafen 0\.3\.3$/m);
-  assert.match(releaseNotes, /Veröffentlicht am 18\. Oktober 2026\./);
+  assert.match(publishedNotes, /^# Apfel-Hafen 0\.3\.3$/m);
+  assert.match(publishedNotes, /Veröffentlicht am 18\. Oktober 2026\./);
+  assert.match(developmentNotes, /^# Apfel-Hafen 0\.3\.4 \(in Entwicklung\)$/m);
 });
 
 test("container creation offers OpenCode images with version and release date", async () => {
