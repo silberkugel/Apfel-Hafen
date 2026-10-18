@@ -1,4 +1,6 @@
-# Apfel-Hafen 0.3.3 (in Entwicklung)
+# Apfel-Hafen 0.3.3
+
+Veröffentlicht am 18. Oktober 2026.
 
 Version 0.3.3 legt die Grundlage für einen sicheren und verständlichen Umgang
 mit Docker-Compose-Mehrcontainerprojekten. Der erste Schritt ist eine
@@ -44,6 +46,3 @@ transparente Analyse vor der späteren Ausführung als gemeinsamer Stack.
 Stoppen und Aktualisieren eines geprüften Stacks folgt in 0.3.4. Dadurch werden
 unsichere oder nicht verlustfrei übersetzbare Einstellungen nicht voreilig auf
 Apple Container angewendet.
-
-Der genaue Umfang wird während der Entwicklung ergänzt. Fertige Funktionen
-werden erst beim Abschluss von 0.3.3 als veröffentlicht gekennzeichnet.
