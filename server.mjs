@@ -11,6 +11,7 @@ import { parseContainers } from "./lib/container-parser.mjs";
 import { buildCreateArgs, editableContainerSettings, imageDigestFromInspect, pinnedImage, replacementSummary } from "./lib/recreate-args.mjs";
 import { buildNewContainerArgs, parseImageNames, validateContainerDraft, validateContainerSettings } from "./lib/container-create.mjs";
 import { dockerHubSearchInput, shouldPullImage, updateCheckResult } from "./lib/image-policy.mjs";
+import { imageProjectPath, imageVersion, latestStableTag, openCodeImageResult, openCodeSearchInput, parseComposeOpenCodeImages } from "./lib/opencode-source.mjs";
 import { localListenHost, normalizeListenHost, requestMatchesOrigin } from "./lib/network-settings.mjs";
 import { installCustomCertificate, loadTlsCertificate, removeCustomCertificate } from "./lib/tls-certificates.mjs";
 import { prepareApplicationData } from "./lib/app-paths.mjs";
@@ -581,6 +582,23 @@ async function imageNames() {
   return parseImageNames(await runContainer(["image", "list", "--format", "json"]));
 }
 
+async function dockerHubTagMetadata(reference) {
+  const value = String(reference || "").replace(/^docker\.io\//, "");
+  if (value.includes("@")) return null;
+  const match = value.match(/^([^/]+)\/([^/:]+):([^/:]+)$/);
+  if (!match) return null;
+  const [, namespace, repository, tag] = match;
+  const url = new URL(`https://hub.docker.com/v2/namespaces/${encodeURIComponent(namespace)}/repositories/${encodeURIComponent(repository)}/tags/${encodeURIComponent(tag)}`);
+  try {
+    const response = await fetch(url, { headers: { Accept: "application/json", "User-Agent": `Apfel-Hafen/${appVersion}` }, signal: AbortSignal.timeout(5_000) });
+    if (!response.ok) return null;
+    const body = await response.json();
+    return { version: String(body.name || tag), releasedAt: body.last_updated || body.tag_last_pushed || null };
+  } catch {
+    return null;
+  }
+}
+
 async function searchImages(query) {
   const input = dockerHubSearchInput(query);
   if (!input) return [];
@@ -605,17 +623,121 @@ async function searchImages(query) {
     const official = Boolean(item.is_official) || rawName.startsWith("library/");
     const repository = official ? rawName.replace(/^library\//, "") : rawName;
     return {
+      source: "dockerhub",
       name: repository,
       reference: official ? `docker.io/library/${repository}:latest` : `docker.io/${repository}:latest`,
       description: String(item.short_description || item.description || "").slice(0, 240),
       official,
+      version: "latest",
+      releasedAt: null,
       pulls: Number(item.pull_count || 0),
       stars: Number(item.star_count || 0),
     };
   }).filter((item) => item.name && !item.name.includes(" "));
-  const results = input.directReference
+  const baseResults = input.directReference
     ? [input.directReference, ...searchedResults.filter((item) => item.reference !== input.directReference.reference)]
     : searchedResults;
+  const results = await Promise.all(baseResults.map(async (item) => ({ ...item, ...(await dockerHubTagMetadata(item.reference) || {}) })));
+  imageSearchCache.set(cacheKey, { createdAt: Date.now(), results });
+  return results;
+}
+
+async function openCodeFetch(path, { optional = false, text = false } = {}) {
+  const url = new URL(path, "https://gitlab.opencode.de/api/v4/");
+  let response;
+  try {
+    response = await fetch(url, {
+      headers: { Accept: text ? "text/plain" : "application/json", "User-Agent": `Apfel-Hafen/${appVersion}` },
+      signal: AbortSignal.timeout(10_000),
+    });
+  } catch (error) {
+    throw new Error(`OpenCode ist zurzeit nicht erreichbar: ${error.message}`);
+  }
+  if (optional && response.status === 404) return null;
+  if (!response.ok) throw new Error(`OpenCode antwortet mit HTTP ${response.status}.`);
+  return text ? response.text() : response.json();
+}
+
+async function openCodeProject(path) {
+  return openCodeFetch(`projects/${encodeURIComponent(path)}`, { optional: true });
+}
+
+async function openCodeTag(path, name) {
+  if (!name) return null;
+  return openCodeFetch(`projects/${encodeURIComponent(path)}/repository/tags/${encodeURIComponent(name)}`, { optional: true });
+}
+
+async function openCodeCompose(project, ref) {
+  for (const file of ["docker-compose.yaml", "docker-compose.yml", "compose.yaml", "compose.yml"]) {
+    const path = `projects/${project.id}/repository/files/${encodeURIComponent(file)}/raw?ref=${encodeURIComponent(ref)}`;
+    const contents = await openCodeFetch(path, { optional: true, text: true });
+    if (contents) return contents;
+  }
+  return "";
+}
+
+async function openCodeProjectImages(project) {
+  const [tags, repositories] = await Promise.all([
+    openCodeFetch(`projects/${project.id}/repository/tags?per_page=20`),
+    openCodeFetch(`projects/${project.id}/registry/repositories?per_page=20`),
+  ]);
+  const latest = latestStableTag(Array.isArray(tags) ? tags : []);
+  if (Array.isArray(repositories) && repositories.length) {
+    return repositories.map((repository) => openCodeImageResult({
+      reference: `${repository.location}:${latest?.name || "latest"}`,
+      project,
+      tag: latest,
+    }));
+  }
+
+  const ref = latest?.name || project.default_branch || "main";
+  const compose = await openCodeCompose(project, ref);
+  const references = parseComposeOpenCodeImages(compose);
+  return Promise.all(references.map(async (reference) => {
+    const path = imageProjectPath(reference);
+    const version = imageVersion(reference);
+    const component = await openCodeProject(path);
+    const componentTag = component ? await openCodeTag(path, version) : null;
+    return openCodeImageResult({
+      reference,
+      project: component,
+      tag: componentTag,
+      sourceProject: project,
+      sourceVersion: latest?.name || ref,
+    });
+  }));
+}
+
+async function searchOpenCodeImages(query) {
+  const input = openCodeSearchInput(query);
+  if (!input) return [];
+  const cacheKey = `opencode|${input.projectPath || input.query}`;
+  const cached = imageSearchCache.get(cacheKey);
+  if (cached && Date.now() - cached.createdAt < 5 * 60 * 1000) return cached.results;
+
+  let projects;
+  if (input.projectPath) {
+    const project = await openCodeProject(input.projectPath);
+    projects = project ? [project] : [];
+  } else {
+    const url = new URL("projects", "https://gitlab.opencode.de/api/v4/");
+    url.searchParams.set("search", input.query);
+    url.searchParams.set("simple", "true");
+    url.searchParams.set("order_by", "last_activity_at");
+    url.searchParams.set("sort", "desc");
+    url.searchParams.set("per_page", "8");
+    projects = await openCodeFetch(`${url.pathname.replace("/api/v4/", "")}${url.search}`);
+  }
+
+  const projectList = Array.isArray(projects) ? projects : [];
+  const settled = input.projectPath
+    ? await Promise.all(projectList.map(async (project) => ({ status: "fulfilled", value: await openCodeProjectImages(project) })))
+    : await Promise.allSettled(projectList.map(openCodeProjectImages));
+  const uniqueResults = new Map();
+  for (const result of settled.flatMap((entry) => entry.status === "fulfilled" ? entry.value : [])) {
+    if (!uniqueResults.has(result.reference)) uniqueResults.set(result.reference, result);
+  }
+  const results = [...uniqueResults.values()].slice(0, 24);
   imageSearchCache.set(cacheKey, { createdAt: Date.now(), results });
   return results;
 }
@@ -1094,7 +1216,9 @@ async function handleApi(req, res, pathname) {
       const session = currentSession(req);
       if (!session) return json(res, 401, { error: "Bitte als macOS-Administrator anmelden." });
       const url = new URL(req.url, `https://${req.headers.host || "127.0.0.1"}`);
-      return json(res, 200, { results: await searchImages(url.searchParams.get("q")) });
+      const source = url.searchParams.get("source") || "dockerhub";
+      if (!new Set(["dockerhub", "opencode"]).has(source)) return json(res, 400, { error: "Unbekannte Image-Quelle." });
+      return json(res, 200, { source, results: source === "opencode" ? await searchOpenCodeImages(url.searchParams.get("q")) : await searchImages(url.searchParams.get("q")) });
     }
     if (req.method === "POST" && pathname === "/api/containers") {
       if (!requireLocalOrigin(req)) return json(res, 403, { error: "Container dürfen nur von der lokalen Oberfläche erstellt werden." });

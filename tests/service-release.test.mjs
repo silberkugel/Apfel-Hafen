@@ -144,3 +144,16 @@ test("0.3.2 development metadata keeps published 0.3.1 downloads aligned", async
   assert.match(readmeEn, /Apfel-Hafen-0\.3\.1-macos-arm64\.dmg/);
   assert.match(releaseNotes, /^# Apfel-Hafen 0\.3\.2 \(in Entwicklung\)$/m);
 });
+
+test("container creation offers OpenCode images with version and release date", async () => {
+  const [server, client] = await Promise.all([
+    readFile(new URL("../server.mjs", import.meta.url), "utf8"),
+    readFile(new URL("../src/main.jsx", import.meta.url), "utf8"),
+  ]);
+  assert.match(server, /source === "opencode" \? await searchOpenCodeImages/);
+  assert.match(server, /registry\/repositories/);
+  assert.match(client, /imageSource === "opencode"/);
+  assert.match(client, /formatReleaseDate\(result\.releasedAt, language\)/);
+  assert.match(client, /t\("version"\)/);
+  assert.match(client, /t\("released"\)/);
+});

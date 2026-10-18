@@ -150,7 +150,9 @@ The following functions are then available:
 - start, stop, and restart containers
 - view startup and container logs directly in the interface
 - open an interactive terminal console for running containers
-- create containers with image search, port mappings, volumes, and environment variables
+- create containers with image search, port mappings, volumes, and environment
+  variables; Docker Hub and the public OpenCode Container Registry are available
+  as sources
 - safely delete containers after confirming their names; optionally delete
   volume data managed by Apfel-Hafen as well
 - check for a newer version of the image in use
@@ -163,6 +165,13 @@ The following functions are then available:
 - activate a custom PEM server certificate with its matching private key or
   switch back to the automatically generated certificate
 - install or update the LaunchAgent and change its automatic-start status
+
+The OpenCode search accepts search terms, project paths, and complete project
+URLs. For a versioned setup project such as
+`https://gitlab.opencode.de/opentalk/ot-setup`, Apfel-Hafen discovers the
+referenced OpenCode images. The picker shows the image version, release date,
+and, where applicable, the setup-project version. A Compose repository itself
+is not incorrectly offered as a single container image.
 
 Certificates and private keys are stored outside the web interface under
 `~/Library/Application Support/Apfel-Hafen/tls/`. The private key is readable

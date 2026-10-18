@@ -51,5 +51,6 @@
 [data-theme=dark] :is(.intro, .eyebrow, .summary span, .identity p, .form-field > span, .form-field small, .info-grid dt, .info-section h3, .info-section p, .info-section code, .dialog > p, .scope-note, .getting-started-steps p, .getting-started-steps h3, .schedule-option small, .setting-row span, .setting-row small) { color: #b4c6ba; }
 [data-theme=dark] :is(h1 em, .service-tabs button.active, .info-section a) { color: #9ed7b8; }
 [data-theme=dark] :is(.scope-note, .getting-started-finish, .stopped-info, .suggestion-help, .image-search-control button) { background: #263e30; color: #cfdfd4; }
+[data-theme=dark] .image-source-picker button.active { background: #4f8f70; color: #fff; }
 [data-theme=dark] :is(.message.error, .login-error, .running-warning, .warning) { background: #422a23; color: #f3c1aa; }
 [data-theme=dark] :is(.message.success, .settings-toast) { background: #284735; color: #c7eed8; }
