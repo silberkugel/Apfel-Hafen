@@ -50,8 +50,8 @@ Browser. Technische Details stehen unter [docs/native-app.md](docs/native-app.md
 
 ### Fertige Auslieferung
 
-Jedes Release enthält das Server-Archiv `Apfel-Hafen-0.3.2-macos-arm64.zip`
-und die native macOS-App als `Apfel-Hafen-0.3.2-macos-arm64.dmg`. Das Archiv
+Jedes Release enthält das Server-Archiv `Apfel-Hafen-0.3.3-macos-arm64.zip`
+und die native macOS-App als `Apfel-Hafen-0.3.3-macos-arm64.dmg`. Das Archiv
 enthält die benötigte Node.js-Laufzeit, das kompilierte PAM-Hilfsprogramm und
 die gebaute Weboberfläche. Apple-Container, Images, Volumes und Anwendungsdaten
 sind nicht enthalten. Archiv entpacken und `Start-Apfel-Hafen.command` starten.
@@ -176,6 +176,18 @@ referenzierten OpenCode-Images. In der Auswahlliste werden Image-Version,
 Veröffentlichungsdatum und – falls zutreffend – die Version des Setup-Projekts
 angezeigt. Ein Compose-Repository selbst wird dabei nicht fälschlich als
 einzelnes Image angeboten.
+
+Der Reiter **Compose** analysiert eine Compose-Datei oder einen lokalen
+Projektordner vor der Installation. Öffentliche OpenCode-Projekte können auch
+über ihre Projektadresse geladen werden. Optional können eine `.env`-Datei und
+aktive Profile angegeben werden. Die Übersicht zeigt Dienste, Images, Builds, Ports, Volumes, Netzwerke,
+Abhängigkeiten, Healthchecks und die ermittelte Startreihenfolge. Ein
+Kompatibilitätsbericht weist unter anderem auf privilegierten Betrieb,
+Host-Namensräume und noch nicht ausführbare Compose-Funktionen hin. Die Analyse
+ist nur lesend; vertrauliche Variablenwerte werden im Ergebnis maskiert und
+noch nicht ausgewertete Eigenschaften ausdrücklich gemeldet. Das
+gemeinsame Starten eines geprüften Stacks ist für eine spätere Unterversion
+vorgesehen.
 
 Zertifikate und private Schlüssel werden unter
 `~/Library/Application Support/Apfel-Hafen/tls/` außerhalb der Weboberfläche

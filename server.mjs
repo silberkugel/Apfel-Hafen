@@ -20,6 +20,7 @@ import { OperationStore } from "./lib/operation-store.mjs";
 import { currentMcpProtocolVersion, dispatchMcpPayload, mcpBearerAuthorized, validMcpToken, validateModernMcpHeaders } from "./lib/mcp-server.mjs";
 import { buildImageArgs, builderActionArgs, imageActionArgs, parseImages, parseRegistryList, registryAction, safeLogOptions, validateImageReference } from "./lib/container-operations.mjs";
 import { cpuTotals, cpuUsage, parseContainerDiskUsage, parseContainerStats, parseContainerSystemStatus, parseMemoryPressure, parseSwapUsage, parseThermalState, parseVmStat, recommendations } from "./lib/technology-metrics.mjs";
+import { analyzeCompose } from "./lib/compose-analysis.mjs";
 
 const root = fileURLToPath(new URL(".", import.meta.url));
 const appPaths = await prepareApplicationData(root);
@@ -676,6 +677,30 @@ async function openCodeCompose(project, ref) {
   return "";
 }
 
+async function openCodeComposeSource(query) {
+  const input = openCodeSearchInput(query);
+  if (!input?.projectPath) throw new Error("Bitte eine vollständige OpenCode-Projektadresse oder einen Projektpfad angeben.");
+  const project = await openCodeProject(input.projectPath);
+  if (!project) throw new Error("Das OpenCode-Projekt wurde nicht gefunden oder ist nicht öffentlich.");
+  const tags = await openCodeFetch(`projects/${project.id}/repository/tags?per_page=20`);
+  const latest = latestStableTag(Array.isArray(tags) ? tags : []);
+  const ref = latest?.name || project.default_branch || "main";
+  let compose = "";
+  let composeName = "";
+  for (const file of ["docker-compose.yaml", "docker-compose.yml", "compose.yaml", "compose.yml"]) {
+    compose = await openCodeFetch(`projects/${project.id}/repository/files/${encodeURIComponent(file)}/raw?ref=${encodeURIComponent(ref)}`, { optional: true, text: true }) || "";
+    if (compose) { composeName = file; break; }
+  }
+  if (!compose) throw new Error("Im Stammverzeichnis des OpenCode-Projekts wurde keine Compose-Datei gefunden.");
+  let env = "";
+  let envName = "";
+  for (const file of [".env.example", ".env.sample", "env.sample", "example.env"]) {
+    env = await openCodeFetch(`projects/${project.id}/repository/files/${encodeURIComponent(file)}/raw?ref=${encodeURIComponent(ref)}`, { optional: true, text: true }) || "";
+    if (env) { envName = file; break; }
+  }
+  return { compose, composeName, env, envName, projectName: project.name_with_namespace || project.path_with_namespace, projectUrl: project.web_url, ref };
+}
+
 async function openCodeProjectImages(project) {
   const [tags, repositories] = await Promise.all([
     openCodeFetch(`projects/${project.id}/repository/tags?per_page=20`),
@@ -940,9 +965,10 @@ function json(res, status, body, headers = {}) {
 
 async function readBody(req) {
   let raw = "";
+  const limit = String(req.url || "").startsWith("/api/compose/analyze") ? 2_200_000 : 524_288;
   for await (const chunk of req) {
     raw += chunk;
-    if (raw.length > 524_288) throw new Error("Anfrage ist zu groß.");
+    if (raw.length > limit) throw new Error("Anfrage ist zu groß.");
   }
   return JSON.parse(raw || "{}");
 }
@@ -1219,6 +1245,18 @@ async function handleApi(req, res, pathname) {
       const source = url.searchParams.get("source") || "dockerhub";
       if (!new Set(["dockerhub", "opencode"]).has(source)) return json(res, 400, { error: "Unbekannte Image-Quelle." });
       return json(res, 200, { source, results: source === "opencode" ? await searchOpenCodeImages(url.searchParams.get("q")) : await searchImages(url.searchParams.get("q")) });
+    }
+    if (req.method === "POST" && pathname === "/api/compose/analyze") {
+      if (!requireLocalOrigin(req)) return json(res, 403, { error: "Compose-Dateien dürfen nur von der lokalen Oberfläche analysiert werden." });
+      if (!currentSession(req)) return json(res, 401, { error: "Bitte als macOS-Administrator anmelden." });
+      const body = await readBody(req);
+      return json(res, 200, { analysis: analyzeCompose(body.compose, { envSource: body.env, profiles: Array.isArray(body.profiles) ? body.profiles : [] }) });
+    }
+    if (req.method === "POST" && pathname === "/api/compose/source") {
+      if (!requireLocalOrigin(req)) return json(res, 403, { error: "Compose-Projekte dürfen nur von der lokalen Oberfläche geladen werden." });
+      if (!currentSession(req)) return json(res, 401, { error: "Bitte als macOS-Administrator anmelden." });
+      const body = await readBody(req);
+      return json(res, 200, { source: await openCodeComposeSource(body.url) });
     }
     if (req.method === "POST" && pathname === "/api/containers") {
       if (!requireLocalOrigin(req)) return json(res, 403, { error: "Container dürfen nur von der lokalen Oberfläche erstellt werden." });

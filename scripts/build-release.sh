@@ -63,6 +63,7 @@ ditto "$NODE_ROOT/bin/node" "$STAGE_DIR/runtime/node"
 ditto "$NODE_ROOT/LICENSE" "$STAGE_DIR/runtime/NODE-LICENSE"
 ditto auth/pam-auth "$STAGE_DIR/auth/pam-auth"
 ditto lib "$STAGE_DIR/lib"
+ditto server-dist/compose-analysis.mjs "$STAGE_DIR/lib/compose-analysis.mjs"
 ditto server.mjs "$STAGE_DIR/server.mjs"
 ditto package.json "$STAGE_DIR/package.json"
 ditto service-control.mjs "$STAGE_DIR/service-control.mjs"
@@ -85,6 +86,10 @@ EOF
 
 if find "$STAGE_DIR" -type d -name node_modules | grep -q .; then
   print -u2 -- "Interner Fehler: node_modules darf nicht ausgeliefert werden."
+  exit 1
+fi
+if grep -q 'from "yaml"' "$STAGE_DIR/lib/compose-analysis.mjs"; then
+  print -u2 -- "Interner Fehler: Der Compose-Parser wurde nicht für das Release gebündelt."
   exit 1
 fi
 

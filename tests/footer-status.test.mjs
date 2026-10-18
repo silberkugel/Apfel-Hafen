@@ -26,3 +26,9 @@ test("tools use the already known container state without waiting for technology
   const result = footerStatus({ section: "tools", connected: true, language: "de", containers: [{ status: "running" }], updatedAt: { containers: "2026-10-02T12:34:56Z" } });
   assert.match(result.text, /^Verbunden · 1 Container aktiv · Aktualisiert /);
 });
+
+test("footer summarizes the latest Compose analysis", () => {
+  const result = footerStatus({ section: "compose", connected: true, language: "de", compose: { compatible: false, summary: { services: 4 } }, updatedAt: { compose: "2026-10-18T18:00:00Z" } });
+  assert.equal(result.tone, "warning");
+  assert.match(result.text, /^Verbunden · 4 Compose-Dienste analysiert · Aktualisiert /);
+});

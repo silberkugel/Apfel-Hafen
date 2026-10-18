@@ -20,6 +20,15 @@ test("prefers a stable OpenCode tag", () => {
   assert.equal(latestStableTag(tags)?.name, "v26.1.4");
 });
 
+test("selects the highest stable version when OpenCode returns tags out of order", () => {
+  assert.equal(latestStableTag([
+    { name: "v26.2.2-beta.0" },
+    { name: "v26.1.4" },
+    { name: "v26.3.0-beta.0" },
+    { name: "v26.2.1" },
+  ]).name, "v26.2.1");
+});
+
 test("extracts only OpenCode registry images from compose defaults", () => {
   const compose = `
 services:

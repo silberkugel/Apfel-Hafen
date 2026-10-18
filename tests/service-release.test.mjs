@@ -16,6 +16,7 @@ test("release archive contains the service controller", async () => {
   const release = await readFile(new URL("../scripts/build-release.sh", import.meta.url), "utf8");
   assert.match(release, /ditto service-control\.mjs/);
   assert.match(release, /ditto package\.json/);
+  assert.match(release, /server-dist\/compose-analysis\.mjs/);
 });
 
 test("administration save shows temporary button and toast feedback", async () => {
@@ -108,6 +109,8 @@ test("native app refreshes an outdated bundled background service", async () => 
   assert.match(store, /serviceUpdateRequired \|\| !serverReachable/);
   assert.match(store, /try service\.register\(\)/);
   assert.match(runScript, /pkill -x ApfelHafenService/);
+  assert.match(runScript, /api\/status/);
+  assert.match(runScript, /EXPECTED_VERSION/);
 });
 
 test("LaunchAgent creation exposes all four launchd start options", async () => {
@@ -131,19 +134,19 @@ test("existing user LaunchAgents can be edited through the protected API", async
   assert.match(client, /launchdDraftFromService/);
 });
 
-test("0.3.2 release metadata and download names are aligned", async () => {
+test("0.3.3 release metadata and published download names are aligned", async () => {
   const [packageSource, readmeDe, readmeEn, releaseNotes] = await Promise.all([
     readFile(new URL("../package.json", import.meta.url), "utf8"),
     readFile(new URL("../README-DE.md", import.meta.url), "utf8"),
     readFile(new URL("../README.md", import.meta.url), "utf8"),
-    readFile(new URL("../RELEASE-NOTES-0.3.2.md", import.meta.url), "utf8"),
+    readFile(new URL("../RELEASE-NOTES-0.3.3.md", import.meta.url), "utf8"),
   ]);
 
-  assert.equal(JSON.parse(packageSource).version, "0.3.2");
-  assert.match(readmeDe, /Apfel-Hafen-0\.3\.2-macos-arm64\.zip/);
-  assert.match(readmeEn, /Apfel-Hafen-0\.3\.2-macos-arm64\.dmg/);
-  assert.match(releaseNotes, /^# Apfel-Hafen 0\.3\.2$/m);
-  assert.doesNotMatch(releaseNotes, /in Entwicklung/);
+  assert.equal(JSON.parse(packageSource).version, "0.3.3");
+  assert.match(readmeDe, /Apfel-Hafen-0\.3\.3-macos-arm64\.zip/);
+  assert.match(readmeEn, /Apfel-Hafen-0\.3\.3-macos-arm64\.dmg/);
+  assert.match(releaseNotes, /^# Apfel-Hafen 0\.3\.3$/m);
+  assert.match(releaseNotes, /Veröffentlicht am 18\. Oktober 2026\./);
 });
 
 test("container creation offers OpenCode images with version and release date", async () => {
@@ -157,4 +160,21 @@ test("container creation offers OpenCode images with version and release date", 
   assert.match(client, /formatReleaseDate\(result\.releasedAt, language\)/);
   assert.match(client, /t\("version"\)/);
   assert.match(client, /t\("released"\)/);
+});
+
+test("0.3.3 adds a read-only Compose analysis to the application", async () => {
+  const [server, client, composeCenter] = await Promise.all([
+    readFile(new URL("../server.mjs", import.meta.url), "utf8"),
+    readFile(new URL("../src/main.jsx", import.meta.url), "utf8"),
+    readFile(new URL("../src/ComposeCenter.jsx", import.meta.url), "utf8"),
+  ]);
+  assert.match(server, /pathname === "\/api\/compose\/analyze"/);
+  assert.match(server, /pathname === "\/api\/compose\/source"/);
+  assert.match(server, /openCodeComposeSource/);
+  assert.match(server, /"env\.sample"/);
+  assert.match(server, /analyzeCompose/);
+  assert.match(client, /setSection\("compose"\)/);
+  assert.match(client, /<ComposeCenter/);
+  assert.match(composeCenter, /READ ONLY/);
+  assert.doesNotMatch(composeCenter, /\/api\/containers/);
 });

@@ -13,7 +13,7 @@ function timeLabel(value, language) {
   });
 }
 
-export function footerStatus({ section, connected, loading, containers, services, technology, updatedAt, language = "de" }) {
+export function footerStatus({ section, connected, loading, containers, services, technology, compose, updatedAt, language = "de" }) {
   const de = language === "de";
   if (connected === false) return { tone: "critical", text: de ? "Verbindung zum Dienst unterbrochen" : "Service connection interrupted" };
   if (connected === null) return { tone: "loading", text: de ? "Verbindung wird hergestellt …" : "Connecting …" };
@@ -32,6 +32,12 @@ export function footerStatus({ section, connected, loading, containers, services
     if (!technology) state = de ? "Apple-Container-Status wird ermittelt" : "Checking Apple Container status";
     else if (technology.systemRunning) state = de ? "Apple Container läuft" : "Apple Container running";
     else { state = de ? "Apple Container gestoppt" : "Apple Container stopped"; tone = "warning"; }
+  } else if (section === "compose") {
+    const count = compose?.summary?.services || 0;
+    state = compose
+      ? `${count} ${de ? "Compose-Dienste analysiert" : count === 1 ? "Compose service analyzed" : "Compose services analyzed"}`
+      : (de ? "Bereit für eine nur lesende Analyse" : "Ready for read-only analysis");
+    tone = compose && !compose.compatible ? "warning" : "normal";
   } else {
     const count = activeCount(containers, (item) => item.status === "running");
     timestamp = updatedAt?.containers;

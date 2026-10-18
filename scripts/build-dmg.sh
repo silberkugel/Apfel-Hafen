@@ -14,9 +14,11 @@ trap 'rm -rf "$STAGE"' EXIT INT TERM
 zsh scripts/build-app.sh
 ditto app-out/Apfel-Hafen.app "$STAGE/Apfel-Hafen.app"
 ln -s /Applications "$STAGE/Programme"
+STAGE_KB="$(du -sk "$STAGE" | awk '{ print $1 }')"
+IMAGE_MB=$(( (STAGE_KB * 3 / 2 + 1023) / 1024 + 32 ))
 
 rm -f "$DMG" "$CHECKSUM"
-/usr/bin/hdiutil create -quiet -volname "Apfel-Hafen" -srcfolder "$STAGE" -format UDZO "$DMG"
+/usr/bin/hdiutil create -quiet -size "${IMAGE_MB}m" -volname "Apfel-Hafen" -srcfolder "$STAGE" -format UDZO "$DMG"
 
 if [[ -n "${APFEL_HAFEN_NOTARY_PROFILE:-}" ]]; then
   /usr/bin/xcrun notarytool submit "$DMG" --keychain-profile "$APFEL_HAFEN_NOTARY_PROFILE" --wait
