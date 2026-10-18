@@ -22,6 +22,8 @@ Funktionen.
   starten oder löschen.
 - Akzeptanzkriterium: Noch nicht ausgewertete Compose-Eigenschaften müssen im
   Bericht erscheinen und dürfen nicht stillschweigend entfallen.
+- Akzeptanzkriterium: Nicht ausgewählte Profile bleiben sichtbar, beeinflussen
+  die Kompatibilität des aktiven Profils aber nur über echte Abhängigkeiten.
 
 ## 0.3.4 – Stack-Laufzeit
 

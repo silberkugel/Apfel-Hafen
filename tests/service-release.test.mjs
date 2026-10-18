@@ -109,6 +109,8 @@ test("native app refreshes an outdated bundled background service", async () => 
   assert.match(store, /serviceUpdateRequired \|\| !serverReachable/);
   assert.match(store, /try service\.register\(\)/);
   assert.match(runScript, /pkill -x ApfelHafenService/);
+  assert.match(runScript, /api\/status/);
+  assert.match(runScript, /EXPECTED_VERSION/);
 });
 
 test("LaunchAgent creation exposes all four launchd start options", async () => {
@@ -168,6 +170,7 @@ test("0.3.3 adds a read-only Compose analysis to the application", async () => {
   assert.match(server, /pathname === "\/api\/compose\/analyze"/);
   assert.match(server, /pathname === "\/api\/compose\/source"/);
   assert.match(server, /openCodeComposeSource/);
+  assert.match(server, /"env\.sample"/);
   assert.match(server, /analyzeCompose/);
   assert.match(client, /setSection\("compose"\)/);
   assert.match(client, /<ComposeCenter/);

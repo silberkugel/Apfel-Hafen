@@ -87,3 +87,33 @@ test("compose analysis rejects malformed documents and dependency cycles", () =>
   assert.equal(result.startOrder.length, 0);
   assert.ok(result.diagnostics.some((item) => item.code === "dependency-cycle"));
 });
+
+test("inactive profile findings stay visible without blocking the selected stack", () => {
+  const result = analyzeCompose(`
+services:
+  core:
+    image: example/core
+  optional:
+    image: example/optional
+    profiles: [optional]
+    privileged: true
+`, { profiles: [] });
+  assert.equal(result.compatible, true);
+  assert.equal(result.summary.errors, 0);
+  assert.equal(result.summary.information, 1);
+  assert.ok(result.diagnostics.some((item) => item.code === "privileged" && item.level === "info" && item.active === false));
+});
+
+test("an active service cannot silently depend on an inactive profile", () => {
+  const result = analyzeCompose(`
+services:
+  core:
+    image: example/core
+    depends_on: [optional]
+  optional:
+    image: example/optional
+    profiles: [optional]
+`);
+  assert.equal(result.compatible, false);
+  assert.ok(result.diagnostics.some((item) => item.code === "inactive-dependency"));
+});

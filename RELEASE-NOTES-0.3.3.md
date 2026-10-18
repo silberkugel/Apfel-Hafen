@@ -29,6 +29,12 @@ transparente Analyse vor der späteren Ausführung als gemeinsamer Stack.
 - Noch nicht ausdrücklich ausgewertete Projekt- oder Diensteigenschaften werden
   einzeln im Bericht aufgeführt. Dadurch kann eine spätere Ausführung keine
   Compose-Einstellung unbemerkt verwerfen.
+- Befunde deaktivierter Profile bleiben als Hinweise sichtbar, blockieren aber
+  nicht das ausgewählte Profil. Benötigt ein aktiver Dienst einen deaktivierten
+  Dienst, wird dies dagegen als Fehler gemeldet.
+- Der OpenTalk-Praxistest berücksichtigt die im Projekt verwendete
+  `env.sample` und weist für das Profil `core` derzeit gezielt auf das von
+  `livekit` benötigte Host-Netzwerk hin.
 - Die Analyse ist vollständig lesend und verändert weder vorhandene noch neue
   Container.
 

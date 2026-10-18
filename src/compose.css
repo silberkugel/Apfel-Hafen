@@ -45,6 +45,7 @@
 .compose-diagnostics li { display: grid; grid-template-columns: 22px 1fr auto; gap: 8px; align-items: center; padding: 9px; background: #f1f1ec; font-size: 11px; }
 .compose-diagnostics li.error { background: #f4e3df; color: #702f23; }
 .compose-diagnostics li.warning { background: #f4ead9; color: #6b4a21; }
+.compose-diagnostics li.info { background: #e8ece9; color: #53645c; }
 .compose-diagnostics li b { display: grid; place-items: center; width: 20px; height: 20px; border: 1px solid currentColor; border-radius: 50%; }
 .compose-diagnostics li code { font-size: 9px; opacity: .7; }
 [data-theme=dark] :is(.compose-file, .compose-service-grid article, .compose-order, .compose-diagnostics, .compose-remote) { background: #202723; border-color: #46534d; }

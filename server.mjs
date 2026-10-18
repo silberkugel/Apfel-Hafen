@@ -694,7 +694,7 @@ async function openCodeComposeSource(query) {
   if (!compose) throw new Error("Im Stammverzeichnis des OpenCode-Projekts wurde keine Compose-Datei gefunden.");
   let env = "";
   let envName = "";
-  for (const file of [".env.example", ".env.sample", "example.env"]) {
+  for (const file of [".env.example", ".env.sample", "env.sample", "example.env"]) {
     env = await openCodeFetch(`projects/${project.id}/repository/files/${encodeURIComponent(file)}/raw?ref=${encodeURIComponent(ref)}`, { optional: true, text: true }) || "";
     if (env) { envName = file; break; }
   }
