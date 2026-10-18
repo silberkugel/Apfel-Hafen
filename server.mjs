@@ -20,6 +20,7 @@ import { OperationStore } from "./lib/operation-store.mjs";
 import { currentMcpProtocolVersion, dispatchMcpPayload, mcpBearerAuthorized, validMcpToken, validateModernMcpHeaders } from "./lib/mcp-server.mjs";
 import { buildImageArgs, builderActionArgs, imageActionArgs, parseImages, parseRegistryList, registryAction, safeLogOptions, validateImageReference } from "./lib/container-operations.mjs";
 import { cpuTotals, cpuUsage, parseContainerDiskUsage, parseContainerStats, parseContainerSystemStatus, parseMemoryPressure, parseSwapUsage, parseThermalState, parseVmStat, recommendations } from "./lib/technology-metrics.mjs";
+import { analyzeCompose } from "./lib/compose-analysis.mjs";
 
 const root = fileURLToPath(new URL(".", import.meta.url));
 const appPaths = await prepareApplicationData(root);
@@ -940,9 +941,10 @@ function json(res, status, body, headers = {}) {
 
 async function readBody(req) {
   let raw = "";
+  const limit = String(req.url || "").startsWith("/api/compose/analyze") ? 2_200_000 : 524_288;
   for await (const chunk of req) {
     raw += chunk;
-    if (raw.length > 524_288) throw new Error("Anfrage ist zu groß.");
+    if (raw.length > limit) throw new Error("Anfrage ist zu groß.");
   }
   return JSON.parse(raw || "{}");
 }
@@ -1219,6 +1221,12 @@ async function handleApi(req, res, pathname) {
       const source = url.searchParams.get("source") || "dockerhub";
       if (!new Set(["dockerhub", "opencode"]).has(source)) return json(res, 400, { error: "Unbekannte Image-Quelle." });
       return json(res, 200, { source, results: source === "opencode" ? await searchOpenCodeImages(url.searchParams.get("q")) : await searchImages(url.searchParams.get("q")) });
+    }
+    if (req.method === "POST" && pathname === "/api/compose/analyze") {
+      if (!requireLocalOrigin(req)) return json(res, 403, { error: "Compose-Dateien dürfen nur von der lokalen Oberfläche analysiert werden." });
+      if (!currentSession(req)) return json(res, 401, { error: "Bitte als macOS-Administrator anmelden." });
+      const body = await readBody(req);
+      return json(res, 200, { analysis: analyzeCompose(body.compose, { envSource: body.env, profiles: Array.isArray(body.profiles) ? body.profiles : [] }) });
     }
     if (req.method === "POST" && pathname === "/api/containers") {
       if (!requireLocalOrigin(req)) return json(res, 403, { error: "Container dürfen nur von der lokalen Oberfläche erstellt werden." });

@@ -177,6 +177,16 @@ Veröffentlichungsdatum und – falls zutreffend – die Version des Setup-Proje
 angezeigt. Ein Compose-Repository selbst wird dabei nicht fälschlich als
 einzelnes Image angeboten.
 
+Der Reiter **Compose** analysiert eine lokale Compose-Datei vor der
+Installation. Optional können eine `.env`-Datei und aktive Profile angegeben
+werden. Die Übersicht zeigt Dienste, Images, Builds, Ports, Volumes, Netzwerke,
+Abhängigkeiten, Healthchecks und die ermittelte Startreihenfolge. Ein
+Kompatibilitätsbericht weist unter anderem auf privilegierten Betrieb,
+Host-Namensräume und noch nicht ausführbare Compose-Funktionen hin. Die Analyse
+ist nur lesend; vertrauliche Variablenwerte werden im Ergebnis maskiert. Das
+gemeinsame Starten eines geprüften Stacks ist für eine spätere Unterversion
+vorgesehen.
+
 Zertifikate und private Schlüssel werden unter
 `~/Library/Application Support/Apfel-Hafen/tls/` außerhalb der Weboberfläche
 gespeichert. Der private Schlüssel ist nur für den ausführenden Benutzer

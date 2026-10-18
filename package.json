@@ -8,7 +8,7 @@
   },
   "scripts": {
     "dev": "node server.mjs --dev",
-    "build": "vite build",
+    "build": "vite build && vite build --config vite.server.config.js",
     "release": "zsh scripts/build-dmg.sh",
     "app": "zsh scripts/build-app.sh",
     "dmg": "zsh scripts/build-dmg.sh",
@@ -20,7 +20,8 @@
     "@vitejs/plugin-react": "6.0.2",
     "react": "19.2.6",
     "react-dom": "19.2.6",
-    "vite": "8.0.16"
+    "vite": "8.0.16",
+    "yaml": "^2.9.1"
   },
   "devDependencies": {
     "@testing-library/react": "^16.3.3",

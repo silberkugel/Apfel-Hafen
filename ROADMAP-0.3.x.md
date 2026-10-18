@@ -6,12 +6,19 @@ Funktionen.
 
 ## 0.3.3 – Compose-Analyse
 
-- Mehrcontainerprojekte importieren und vor der Installation prüfen.
-- `.env`-Dateien und Compose-Profile berücksichtigen.
-- Dienste, Images, Ports, Netzwerke, Volumes, Abhängigkeiten und Healthchecks
-  übersichtlich darstellen.
+- Mehrcontainerprojekte in einem eigenen, nur lesenden Compose-Reiter
+  importieren oder einfügen und vor der Installation prüfen.
+- `.env`-Dateien und Compose-Profile berücksichtigen; vertrauliche Werte im
+  gesamten Ergebnis maskieren.
+- Dienste, Images, Builds, Ports, Netzwerke, Volumes, Abhängigkeiten,
+  Neustartregeln und Healthchecks übersichtlich darstellen.
+- Eine Startreihenfolge bestimmen und unbekannte Abhängigkeiten sowie Zyklen
+  erkennen.
 - Kompatibilitätsprobleme und notwendige Administratorentscheidungen vorab
-  erklären.
+  erklären, insbesondere privilegierten Betrieb, Host-Namensräume,
+  Gerätezugriffe, Sicherheitsrechte, Secrets und Configs.
+- Akzeptanzkriterium: Die Analyse darf keine Container erstellen, ändern,
+  starten oder löschen.
 
 ## 0.3.4 – Stack-Laufzeit
 

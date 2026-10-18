@@ -16,6 +16,7 @@ test("release archive contains the service controller", async () => {
   const release = await readFile(new URL("../scripts/build-release.sh", import.meta.url), "utf8");
   assert.match(release, /ditto service-control\.mjs/);
   assert.match(release, /ditto package\.json/);
+  assert.match(release, /server-dist\/compose-analysis\.mjs/);
 });
 
 test("administration save shows temporary button and toast feedback", async () => {
@@ -156,4 +157,18 @@ test("container creation offers OpenCode images with version and release date", 
   assert.match(client, /formatReleaseDate\(result\.releasedAt, language\)/);
   assert.match(client, /t\("version"\)/);
   assert.match(client, /t\("released"\)/);
+});
+
+test("0.3.3 adds a read-only Compose analysis to the application", async () => {
+  const [server, client, composeCenter] = await Promise.all([
+    readFile(new URL("../server.mjs", import.meta.url), "utf8"),
+    readFile(new URL("../src/main.jsx", import.meta.url), "utf8"),
+    readFile(new URL("../src/ComposeCenter.jsx", import.meta.url), "utf8"),
+  ]);
+  assert.match(server, /pathname === "\/api\/compose\/analyze"/);
+  assert.match(server, /analyzeCompose/);
+  assert.match(client, /setSection\("compose"\)/);
+  assert.match(client, /<ComposeCenter/);
+  assert.match(composeCenter, /READ ONLY/);
+  assert.doesNotMatch(composeCenter, /\/api\/containers/);
 });
