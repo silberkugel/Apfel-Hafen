@@ -12,8 +12,8 @@ const analysis = {
   summary: { services: 2, activeServices: 2, warnings: 0, errors: 0 },
   startOrder: ["database", "web"],
   services: [
-    { name: "database", active: true, image: "postgres:17", build: false, dependsOn: [], ports: [], volumes: [{ source: "data", target: "/var/lib/postgresql/data", readOnly: false }], networks: ["default"], environment: [{ name: "POSTGRES_PASSWORD", secret: true }], healthcheck: true },
-    { name: "web", active: true, image: "example/web:v1", build: false, dependsOn: ["database"], ports: ["8080:80"], volumes: [], networks: ["default"], environment: [], healthcheck: false },
+    { name: "database", active: true, image: "postgres:17", build: false, dependsOn: [], ports: [], volumes: [{ source: "data", target: "/var/lib/postgresql/data", readOnly: false }], networks: ["default"], environment: [{ name: "POSTGRES_PASSWORD", secret: true }], envFiles: [], healthcheck: true, restart: "unless-stopped", platform: "", resources: { cpus: "2", memory: "1g" } },
+    { name: "web", active: true, image: "example/web:v1", build: false, dependsOn: ["database"], ports: ["8080:80"], volumes: [], networks: ["default"], environment: [], envFiles: [], healthcheck: false, restart: "", platform: "", resources: { cpus: "", memory: "" } },
   ],
   diagnostics: [],
 };
@@ -37,5 +37,15 @@ describe("ComposeCenter", () => {
     render(<ComposeCenter request={vi.fn()} language="de" authenticated={false} />);
     expect(screen.getByText(/macOS-Administrator anmelden/)).toBeTruthy();
     expect(screen.getByRole("button", { name: "Projekt analysieren" }).disabled).toBe(true);
+  });
+
+  test("loads a public OpenCode Compose project into the analyzer", async () => {
+    const request = vi.fn().mockResolvedValue({ source: { compose: "services:\n  web:\n    image: example/web", composeName: "compose.yaml", env: "TAG=v1", envName: ".env.example", projectName: "OpenTalk / Setup", ref: "v1.0.0" } });
+    render(<ComposeCenter request={request} language="de" authenticated onAnalysis={() => {}} />);
+    fireEvent.change(screen.getByPlaceholderText(/gitlab\.opencode\.de/), { target: { value: "https://gitlab.opencode.de/opentalk/ot-setup" } });
+    fireEvent.click(screen.getByRole("button", { name: "Projekt laden" }));
+    await waitFor(() => expect(screen.getByText(/OpenTalk \/ Setup · v1\.0\.0/)).toBeTruthy());
+    expect(screen.getByPlaceholderText(/services:/).value).toContain("example/web");
+    expect(request).toHaveBeenCalledWith("/api/compose/source", expect.objectContaining({ method: "POST" }));
   });
 });

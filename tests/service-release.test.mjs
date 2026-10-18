@@ -166,6 +166,8 @@ test("0.3.3 adds a read-only Compose analysis to the application", async () => {
     readFile(new URL("../src/ComposeCenter.jsx", import.meta.url), "utf8"),
   ]);
   assert.match(server, /pathname === "\/api\/compose\/analyze"/);
+  assert.match(server, /pathname === "\/api\/compose\/source"/);
+  assert.match(server, /openCodeComposeSource/);
   assert.match(server, /analyzeCompose/);
   assert.match(client, /setSection\("compose"\)/);
   assert.match(client, /<ComposeCenter/);

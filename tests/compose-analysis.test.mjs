@@ -33,8 +33,28 @@ volumes:
   assert.equal(result.services[0].healthcheck, true);
   assert.deepEqual(result.services[1].ports, ["8080:80"]);
   assert.deepEqual(result.volumes, ["data"]);
+  assert.deepEqual(result.services[0].networks, ["default"]);
   assert.deepEqual(result.services[0].environment, [{ name: "POSTGRES_PASSWORD", secret: true }]);
   assert.doesNotMatch(JSON.stringify(result), /very-secret/);
+});
+
+test("compose analysis never silently drops unknown properties or referenced env files", () => {
+  const result = analyzeCompose(`
+x-project-note: keep
+services:
+  api:
+    image: example/api
+    env_file: [api.env]
+    command: [serve]
+    cpus: 2
+    mem_limit: 1g
+`);
+  assert.deepEqual(result.services[0].envFiles, ["api.env"]);
+  assert.deepEqual(result.services[0].unreviewedFields, ["command"]);
+  assert.deepEqual(result.services[0].resources, { cpus: "2", memory: "1g" });
+  assert.ok(result.diagnostics.some((item) => item.code === "env-file-reference"));
+  assert.ok(result.diagnostics.some((item) => item.code === "unreviewed-service-field"));
+  assert.ok(result.diagnostics.some((item) => item.code === "unreviewed-top-level-field"));
 });
 
 test("secret variables stay masked even when used in another Compose field", () => {

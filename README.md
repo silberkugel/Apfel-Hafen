@@ -173,13 +173,14 @@ referenced OpenCode images. The picker shows the image version, release date,
 and, where applicable, the setup-project version. A Compose repository itself
 is not incorrectly offered as a single container image.
 
-The **Compose** tab analyzes a local Compose file before installation. An
+The **Compose** tab analyzes a Compose file or a local project folder before
+installation. Public OpenCode projects can also be loaded by project URL. An
 optional `.env` file and active profiles can be supplied. The overview shows
 services, images, builds, ports, volumes, networks, dependencies, health
 checks, and the calculated startup order. A compatibility report highlights
 privileged operation, host namespaces, and Compose features that cannot yet be
-executed. Analysis is read-only, and sensitive variable values are masked in
-the result. Starting an analyzed stack as a unit is planned for a later point
+executed. Analysis is read-only, sensitive variable values are masked, and
+properties that are not yet evaluated are reported explicitly. Starting an analyzed stack as a unit is planned for a later point
 release.
 
 Certificates and private keys are stored outside the web interface under

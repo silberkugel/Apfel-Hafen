@@ -8,6 +8,12 @@ transparente Analyse vor der späteren Ausführung als gemeinsamer Stack.
 
 - Neuer Compose-Reiter zum Einlesen oder Einfügen von `compose.yaml`,
   `compose.yml`, `docker-compose.yaml` und `docker-compose.yml`.
+- Ein lokaler Projektordner kann gemeinsam ausgewählt werden; Apfel-Hafen sucht
+  darin die Compose-Datei und die zugehörige `.env`-Datei.
+- Öffentliche OpenCode-Projekte können über ihre vollständige Adresse oder den
+  Projektpfad geladen werden. Verwendet wird der jüngste stabile Tag oder
+  ersatzweise der Standardzweig; eine vorhandene `.env.example` wird als
+  Vorlage berücksichtigt.
 - Dienste, Images, Builds, Ports, Netzwerke, Volumes, Abhängigkeiten,
   Healthchecks und Neustartregeln werden gemeinsam dargestellt.
 - Optionale `.env`-Dateien und ausgewählte Compose-Profile werden bei der
@@ -20,6 +26,9 @@ transparente Analyse vor der späteren Ausführung als gemeinsamer Stack.
   privilegiertem Betrieb, Host-Netzwerk und Host-Namensräumen, Gerätezugriffen,
   zusätzlichen Sicherheitsrechten sowie noch nicht unterstützten Compose-
   Secrets und Configs.
+- Noch nicht ausdrücklich ausgewertete Projekt- oder Diensteigenschaften werden
+  einzeln im Bericht aufgeführt. Dadurch kann eine spätere Ausführung keine
+  Compose-Einstellung unbemerkt verwerfen.
 - Die Analyse ist vollständig lesend und verändert weder vorhandene noch neue
   Container.
 
