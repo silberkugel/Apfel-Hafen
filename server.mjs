@@ -21,6 +21,7 @@ import { currentMcpProtocolVersion, dispatchMcpPayload, mcpBearerAuthorized, val
 import { buildImageArgs, builderActionArgs, imageActionArgs, parseImages, parseRegistryList, registryAction, safeLogOptions, validateImageReference } from "./lib/container-operations.mjs";
 import { cpuTotals, cpuUsage, parseContainerDiskUsage, parseContainerStats, parseContainerSystemStatus, parseMemoryPressure, parseSwapUsage, parseThermalState, parseVmStat, recommendations } from "./lib/technology-metrics.mjs";
 import { analyzeCompose } from "./lib/compose-analysis.mjs";
+import { createComposePlan } from "./lib/compose-plan.mjs";
 
 const root = fileURLToPath(new URL(".", import.meta.url));
 const appPaths = await prepareApplicationData(root);
@@ -1251,6 +1252,12 @@ async function handleApi(req, res, pathname) {
       if (!currentSession(req)) return json(res, 401, { error: "Bitte als macOS-Administrator anmelden." });
       const body = await readBody(req);
       return json(res, 200, { analysis: analyzeCompose(body.compose, { envSource: body.env, profiles: Array.isArray(body.profiles) ? body.profiles : [] }) });
+    }
+    if (req.method === "POST" && pathname === "/api/compose/plan") {
+      if (!requireLocalOrigin(req)) return json(res, 403, { error: "Compose-Pläne dürfen nur von der lokalen Oberfläche erstellt werden." });
+      if (!currentSession(req)) return json(res, 401, { error: "Bitte als macOS-Administrator anmelden." });
+      const body = await readBody(req);
+      return json(res, 200, { plan: createComposePlan(body.compose, { envSource: body.env, profiles: Array.isArray(body.profiles) ? body.profiles : [], stackName: body.stackName }) });
     }
     if (req.method === "POST" && pathname === "/api/compose/source") {
       if (!requireLocalOrigin(req)) return json(res, 403, { error: "Compose-Projekte dürfen nur von der lokalen Oberfläche geladen werden." });

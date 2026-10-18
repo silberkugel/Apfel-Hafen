@@ -20,6 +20,17 @@ Apple Container unterstützten Compose-Funktionsumfang.
 - Vor jeder Änderung erneut prüfen, ob der Stack verlustfrei auf Apple
   Container abgebildet werden kann.
 
+## Bereits umgesetzt
+
+- Aus einer aktuellen Compose-Analyse kann ein deterministischer, weiterhin
+  nur lesender Ausführungsplan erzeugt werden.
+- Der Plan zeigt die späteren Namen von Containern, Netzwerken und Volumes
+  sowie Start- und Stoppreihenfolge.
+- Eine Plan-ID bindet den Entwurf an den genauen Compose-, `.env`- und
+  Profilstand, ohne Geheimniswerte auszugeben.
+- Aktive Fehler und Warnungen werden als offene Entscheidungen übernommen und
+  sperren die Ausführung, statt Eigenschaften stillschweigend zu verwerfen.
+
 ## Sicherheitsgrenze
 
 Nicht unterstützte oder mehrdeutige Compose-Eigenschaften werden nicht

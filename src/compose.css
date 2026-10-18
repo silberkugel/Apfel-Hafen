@@ -27,6 +27,26 @@
 .compose-verdict.ok { border-color: #418164; background: #deebe4; color: #285641; }
 .compose-verdict.blocked { border-color: #b46b32; background: #f4ead9; color: #6b4a21; }
 .compose-verdict span { font: 10px ui-monospace, monospace; }
+.compose-plan-action { display: grid; grid-template-columns: minmax(220px, 1fr) auto; gap: 8px 12px; align-items: end; margin: 0 0 14px; padding: 13px 15px; border: 1px solid #cbd0c9; background: #f8f7f3; }
+.compose-plan-action label > span { display: block; margin-bottom: 6px; color: #637069; font: 600 10px ui-monospace, monospace; text-transform: uppercase; letter-spacing: .05em; }
+.compose-plan-action input { width: 100%; height: 40px; padding: 0 11px; border: 1px solid #cbd0c9; background: #fff; color: inherit; }
+.compose-plan-action button { min-height: 40px; }
+.compose-plan-action small { grid-column: 1 / -1; color: #68736d; font-size: 10px; }
+.compose-plan { margin: 0 0 14px; padding: 15px; border: 1px solid; }
+.compose-plan.ready { border-color: #78a08b; background: #e6efe9; }
+.compose-plan.blocked { border-color: #c9996e; background: #f6ecde; }
+.compose-plan > header { display: flex; justify-content: space-between; gap: 16px; align-items: start; }
+.compose-plan h3 { margin: 0 0 5px; font-size: 14px; }
+.compose-plan > header strong { font-size: 11px; }
+.compose-plan > header > code { font-size: 9px; opacity: .75; }
+.compose-plan-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 15px; }
+.compose-plan h4 { margin: 10px 0 7px; font-size: 10px; text-transform: uppercase; letter-spacing: .06em; }
+.compose-plan :is(ul, ol) { display: grid; gap: 5px; margin: 0; padding-left: 20px; }
+.compose-plan li { font-size: 10px; }
+.compose-plan li span { margin: 0 7px; }
+.compose-plan-decisions { margin-top: 14px; padding-top: 10px; border-top: 1px solid currentColor; }
+.compose-plan-decisions ul { padding: 0; list-style: none; }
+.compose-plan-decisions li { display: flex; justify-content: space-between; gap: 12px; }
 .compose-order { padding: 13px 15px; border: 1px solid #d2d6cf; background: #f1f1ec; }
 .compose-order h3, .compose-diagnostics h3 { margin: 0 0 10px; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; }
 .compose-order ol { display: flex; flex-wrap: wrap; gap: 8px 24px; margin: 0; padding-left: 22px; }
@@ -48,7 +68,7 @@
 .compose-diagnostics li.info { background: #e8ece9; color: #53645c; }
 .compose-diagnostics li b { display: grid; place-items: center; width: 20px; height: 20px; border: 1px solid currentColor; border-radius: 50%; }
 .compose-diagnostics li code { font-size: 9px; opacity: .7; }
-[data-theme=dark] :is(.compose-file, .compose-service-grid article, .compose-order, .compose-diagnostics, .compose-remote) { background: #202723; border-color: #46534d; }
-[data-theme=dark] :is(.compose-source textarea, .compose-options input, .compose-remote input) { background: #18201c; border-color: #46534d; color: #e5ece8; }
+[data-theme=dark] :is(.compose-file, .compose-service-grid article, .compose-order, .compose-diagnostics, .compose-remote, .compose-plan-action) { background: #202723; border-color: #46534d; }
+[data-theme=dark] :is(.compose-source textarea, .compose-options input, .compose-remote input, .compose-plan-action input) { background: #18201c; border-color: #46534d; color: #e5ece8; }
 @media (max-width: 900px) { .compose-files { grid-template-columns: 1fr; } }
-@media (max-width: 700px) { .compose-options, .compose-remote { grid-template-columns: 1fr; } .compose-verdict { flex-direction: column; } .compose-diagnostics li { grid-template-columns: 22px 1fr; } .compose-diagnostics li code { grid-column: 2; } }
+@media (max-width: 700px) { .compose-options, .compose-remote, .compose-plan-action, .compose-plan-columns { grid-template-columns: 1fr; } .compose-verdict, .compose-plan > header { flex-direction: column; } .compose-diagnostics li { grid-template-columns: 22px 1fr; } .compose-diagnostics li code { grid-column: 2; } }
