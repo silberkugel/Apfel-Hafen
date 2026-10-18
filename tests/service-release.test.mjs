@@ -131,19 +131,18 @@ test("existing user LaunchAgents can be edited through the protected API", async
   assert.match(client, /launchdDraftFromService/);
 });
 
-test("0.3.2 release metadata and download names are aligned", async () => {
+test("0.3.3 development metadata and published download names are aligned", async () => {
   const [packageSource, readmeDe, readmeEn, releaseNotes] = await Promise.all([
     readFile(new URL("../package.json", import.meta.url), "utf8"),
     readFile(new URL("../README-DE.md", import.meta.url), "utf8"),
     readFile(new URL("../README.md", import.meta.url), "utf8"),
-    readFile(new URL("../RELEASE-NOTES-0.3.2.md", import.meta.url), "utf8"),
+    readFile(new URL("../RELEASE-NOTES-0.3.3.md", import.meta.url), "utf8"),
   ]);
 
-  assert.equal(JSON.parse(packageSource).version, "0.3.2");
+  assert.equal(JSON.parse(packageSource).version, "0.3.3");
   assert.match(readmeDe, /Apfel-Hafen-0\.3\.2-macos-arm64\.zip/);
   assert.match(readmeEn, /Apfel-Hafen-0\.3\.2-macos-arm64\.dmg/);
-  assert.match(releaseNotes, /^# Apfel-Hafen 0\.3\.2$/m);
-  assert.doesNotMatch(releaseNotes, /in Entwicklung/);
+  assert.match(releaseNotes, /^# Apfel-Hafen 0\.3\.3 \(in Entwicklung\)$/m);
 });
 
 test("container creation offers OpenCode images with version and release date", async () => {
