@@ -47,6 +47,14 @@
 .compose-plan-decisions { margin-top: 14px; padding-top: 10px; border-top: 1px solid currentColor; }
 .compose-plan-decisions ul { padding: 0; list-style: none; }
 .compose-plan-decisions li { display: flex; justify-content: space-between; gap: 12px; }
+.compose-preflight-button { margin-top: 15px; min-height: 38px; padding: 0 14px; border: 1px solid currentColor; background: transparent; color: inherit; font-weight: 700; }
+.compose-preflight { margin: 0 0 14px; padding: 15px; border-left: 4px solid; }
+.compose-preflight.ready { border-color: #418164; background: #deebe4; color: #285641; }
+.compose-preflight.blocked { border-color: #a84d3b; background: #f4e3df; color: #702f23; }
+.compose-preflight h3 { margin: 0 0 6px; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; }
+.compose-preflight p { font: 10px ui-monospace, monospace; }
+.compose-preflight ul { display: grid; gap: 6px; margin: 10px 0 0; padding: 0; list-style: none; }
+.compose-preflight li { display: flex; justify-content: space-between; gap: 12px; font-size: 10px; }
 .compose-order { padding: 13px 15px; border: 1px solid #d2d6cf; background: #f1f1ec; }
 .compose-order h3, .compose-diagnostics h3 { margin: 0 0 10px; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; }
 .compose-order ol { display: flex; flex-wrap: wrap; gap: 8px 24px; margin: 0; padding-left: 22px; }

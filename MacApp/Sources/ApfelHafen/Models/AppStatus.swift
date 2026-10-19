@@ -23,4 +23,5 @@ struct RuntimeSettings: Codable {
 
 struct ServerStatus: Decodable {
   var version: String?
+  var build: String?
 }

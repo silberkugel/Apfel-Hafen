@@ -10,8 +10,12 @@ APP_BINARY="$APP_BUNDLE/Contents/MacOS/$APP_NAME"
 EXPECTED_VERSION="$(node -p "JSON.parse(require('fs').readFileSync('$ROOT_DIR/package.json', 'utf8')).version")"
 
 pkill -x "$APP_NAME" >/dev/null 2>&1 || true
+if [[ -x "$APP_BINARY" ]]; then
+  /usr/bin/open -W -n "$APP_BUNDLE" --args --unregister-service >/dev/null 2>&1 || true
+fi
 zsh "$ROOT_DIR/scripts/build-app.sh"
-pkill -x ApfelHafenService >/dev/null 2>&1 || true
+EXPECTED_BUILD="$(tr -d '\r\n' < "$APP_BUNDLE/Contents/Resources/Server/BUILD-ID.txt")"
+/usr/bin/open -W -n "$APP_BUNDLE" --args --register-service
 
 open_app() {
   /usr/bin/open -n "$APP_BUNDLE"
@@ -37,13 +41,13 @@ case "$MODE" in
     for attempt in {1..20}; do
       pgrep -x "$APP_NAME" >/dev/null || { sleep 1; continue; }
       STATUS="$(curl -ksS --max-time 2 https://127.0.0.1:4173/api/status 2>/dev/null || true)"
-      if [[ "$STATUS" == *"\"version\":\"$EXPECTED_VERSION\""* ]]; then
+      if [[ "$STATUS" == *"\"version\":\"$EXPECTED_VERSION\""* && "$STATUS" == *"\"build\":\"$EXPECTED_BUILD\""* ]]; then
         print -- "Apfel-Hafen $EXPECTED_VERSION und der zugehörige HTTPS-Dienst laufen."
         exit 0
       fi
       sleep 1
     done
-    print -u2 -- "Apfel-Hafen wurde gestartet, aber der HTTPS-Dienst meldet nicht Version $EXPECTED_VERSION."
+    print -u2 -- "Apfel-Hafen wurde gestartet, aber der HTTPS-Dienst meldet nicht Build $EXPECTED_BUILD von Version $EXPECTED_VERSION."
     exit 1
     ;;
   *)

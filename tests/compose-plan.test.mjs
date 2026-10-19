@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createComposePlan } from "../lib/compose-plan.mjs";
+import { createComposePlan, preflightComposePlan } from "../lib/compose-plan.mjs";
 
 test("creates a deterministic read-only stack plan in dependency order", () => {
   const plan = createComposePlan(`
@@ -48,4 +48,32 @@ services:
 test("never returns interpolated secret values in a plan", () => {
   const plan = createComposePlan("services:\n  api:\n    image: example/api:${API_TOKEN}", { envSource: "API_TOKEN=do-not-return" });
   assert.doesNotMatch(JSON.stringify(plan), /do-not-return/);
+});
+
+test("preflight detects existing names and occupied or duplicate ports without changing state", () => {
+  const plan = createComposePlan(`
+name: demo
+services:
+  web:
+    image: example/web
+    ports: ["8080:80"]
+  admin:
+    image: example/admin
+    ports: ["8080:8080"]
+`);
+  const result = preflightComposePlan(plan, [
+    { name: "demo-web", ports: [] },
+    { name: "other", ports: [{ hostPort: 8080, containerPort: 80, protocol: "tcp" }] },
+  ]);
+  assert.equal(result.readOnly, true);
+  assert.equal(result.ready, false);
+  assert.deepEqual(new Set(result.conflicts.map((item) => item.code)), new Set(["container-name-in-use", "host-port-in-use", "planned-port-conflict"]));
+  assert.deepEqual(result.checks, { existingContainers: 2, plannedContainers: 2, publishedPorts: 1 });
+});
+
+test("preflight accepts an available plan and keeps UDP separate from TCP", () => {
+  const plan = createComposePlan("services:\n  dns:\n    image: example/dns\n    ports: [\"5353:53/udp\"]");
+  const result = preflightComposePlan(plan, [{ name: "web", ports: [{ hostPort: 5353, protocol: "tcp" }] }]);
+  assert.equal(result.ready, true);
+  assert.equal(result.conflicts.length, 0);
 });

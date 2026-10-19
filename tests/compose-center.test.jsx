@@ -61,7 +61,8 @@ describe("ComposeCenter", () => {
     };
     const request = vi.fn()
       .mockResolvedValueOnce({ analysis })
-      .mockResolvedValueOnce({ plan });
+      .mockResolvedValueOnce({ plan })
+      .mockResolvedValueOnce({ plan, preflight: { readOnly: true, ready: true, planId: plan.planId, checks: { existingContainers: 1, plannedContainers: 2, publishedPorts: 1 }, conflicts: [] } });
     render(<ComposeCenter request={request} language="de" authenticated onAnalysis={() => {}} />);
     fireEvent.change(screen.getByPlaceholderText(/services:/), { target: { value: "services:\n  web:\n    image: example/web:v1" } });
     fireEvent.click(screen.getByRole("button", { name: "Projekt analysieren" }));
@@ -70,6 +71,8 @@ describe("ComposeCenter", () => {
     await waitFor(() => expect(screen.getByText(/Bereit für die spätere Ausführung/)).toBeTruthy());
     expect(screen.getByText(/0123456789abcdef/)).toBeTruthy();
     expect(screen.getAllByText("demo-web").length).toBe(2);
-    expect(request).toHaveBeenLastCalledWith("/api/compose/plan", expect.objectContaining({ method: "POST" }));
+    fireEvent.click(screen.getByRole("button", { name: "Auf diesem Mac vorab prüfen" }));
+    await waitFor(() => expect(screen.getByText(/Keine lokalen Konflikte erkannt/)).toBeTruthy());
+    expect(request).toHaveBeenLastCalledWith("/api/compose/preflight", expect.objectContaining({ method: "POST" }));
   });
 });

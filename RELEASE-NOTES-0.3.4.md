@@ -30,6 +30,16 @@ Apple Container unterstützten Compose-Funktionsumfang.
   Profilstand, ohne Geheimniswerte auszugeben.
 - Aktive Fehler und Warnungen werden als offene Entscheidungen übernommen und
   sperren die Ausführung, statt Eigenschaften stillschweigend zu verwerfen.
+- Eine nur lesende Vorabprüfung vergleicht den Plan mit den tatsächlich auf
+  dem Mac vorhandenen Containern und Portfreigaben.
+- Vorhandene Container-Namen, bereits belegte Ports und doppelte Portangaben
+  innerhalb des Stacks werden vor jeder späteren Ausführung als Konflikt
+  gemeldet.
+- Erweiterte oder mehrdeutige Portsyntax bleibt im Bericht sichtbar und wird
+  nicht unbemerkt in eine vereinfachte Freigabe umgewandelt.
+- App und Hintergrunddienst vergleichen zusätzlich eine Inhaltskennung. Damit
+  werden auch neue Entwicklungs-Builds innerhalb derselben Versionsnummer
+  zuverlässig aktiviert.
 
 ## Sicherheitsgrenze
 

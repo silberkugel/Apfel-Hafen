@@ -103,14 +103,17 @@ test("native app refreshes an outdated bundled background service", async () => 
     readFile(new URL("../server.mjs", import.meta.url), "utf8"),
     readFile(new URL("../script/build_and_run.sh", import.meta.url), "utf8"),
   ]);
-  assert.match(server, /version: appVersion/);
-  assert.match(store, /serviceUpdateRequired = serverReachable && serverVersion != bundleVersion/);
+  assert.match(server, /version: appVersion, build: appBuild/);
+  assert.match(store, /serverStatus\?\.version != bundleVersion \|\| serverStatus\?\.build != bundledBuild/);
   assert.match(store, /activateBundledServiceIfNeeded/);
   assert.match(store, /serviceUpdateRequired \|\| !serverReachable/);
   assert.match(store, /try service\.register\(\)/);
-  assert.match(runScript, /pkill -x ApfelHafenService/);
+  assert.match(runScript, /--unregister-service/);
+  assert.match(runScript, /--register-service/);
   assert.match(runScript, /api\/status/);
   assert.match(runScript, /EXPECTED_VERSION/);
+  assert.match(runScript, /EXPECTED_BUILD/);
+  assert.match(runScript, /BUILD-ID\.txt/);
 });
 
 test("LaunchAgent creation exposes all four launchd start options", async () => {
@@ -172,11 +175,13 @@ test("0.3.3 adds a read-only Compose analysis to the application", async () => {
   ]);
   assert.match(server, /pathname === "\/api\/compose\/analyze"/);
   assert.match(server, /pathname === "\/api\/compose\/plan"/);
+  assert.match(server, /pathname === "\/api\/compose\/preflight"/);
   assert.match(server, /pathname === "\/api\/compose\/source"/);
   assert.match(server, /openCodeComposeSource/);
   assert.match(server, /"env\.sample"/);
   assert.match(server, /analyzeCompose/);
   assert.match(server, /createComposePlan/);
+  assert.match(server, /preflightComposePlan/);
   assert.match(client, /setSection\("compose"\)/);
   assert.match(client, /<ComposeCenter/);
   assert.match(composeCenter, /READ ONLY/);

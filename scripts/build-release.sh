@@ -84,6 +84,9 @@ Node.js $NODE_VERSION (gebündelte Laufzeit)
 Zielplattform: macOS / $ARCH
 EOF
 
+BUILD_ID="$(COPYFILE_DISABLE=1 /usr/bin/tar -cf - -C "$STAGE_DIR" . | shasum -a 256 | awk '{ print $1 }')"
+print -r -- "$BUILD_ID" > "$STAGE_DIR/BUILD-ID.txt"
+
 if find "$STAGE_DIR" -type d -name node_modules | grep -q .; then
   print -u2 -- "Interner Fehler: node_modules darf nicht ausgeliefert werden."
   exit 1
