@@ -21,10 +21,12 @@ import { currentMcpProtocolVersion, dispatchMcpPayload, mcpBearerAuthorized, val
 import { buildImageArgs, builderActionArgs, imageActionArgs, parseImages, parseRegistryList, registryAction, safeLogOptions, validateImageReference } from "./lib/container-operations.mjs";
 import { cpuTotals, cpuUsage, parseContainerDiskUsage, parseContainerStats, parseContainerSystemStatus, parseMemoryPressure, parseSwapUsage, parseThermalState, parseVmStat, recommendations } from "./lib/technology-metrics.mjs";
 import { analyzeCompose } from "./lib/compose-analysis.mjs";
+import { createComposePlan, preflightComposePlan } from "./lib/compose-plan.mjs";
 
 const root = fileURLToPath(new URL(".", import.meta.url));
 const appPaths = await prepareApplicationData(root);
 const appVersion = JSON.parse(await readFile(join(root, "package.json"), "utf8")).version;
+const appBuild = (await readFile(join(root, "BUILD-ID.txt"), "utf8").catch(() => "development")).trim() || "development";
 const isDev = process.argv.includes("--dev");
 const port = Number(process.env.PORT || (isDev ? 4174 : 4173));
 const sessionCookieName = isDev ? "apfel_dev_session" : "__Host-apfel_session";
@@ -993,7 +995,7 @@ async function handleApi(req, res, pathname) {
     }
     if (req.method === "GET" && pathname === "/api/status") {
       const settings = await readSettings();
-      return json(res, 200, { version: appVersion, protocol: "HTTPS", listenHost: settings.listenHost, certificateSource: activeTls.status.source, containerCli });
+      return json(res, 200, { version: appVersion, build: appBuild, protocol: "HTTPS", listenHost: settings.listenHost, certificateSource: activeTls.status.source, containerCli });
     }
     if (req.method === "GET" && pathname === "/api/technology/overview") {
       if (!currentSession(req)) return json(res, 401, { error: "Bitte als macOS-Administrator anmelden." });
@@ -1251,6 +1253,20 @@ async function handleApi(req, res, pathname) {
       if (!currentSession(req)) return json(res, 401, { error: "Bitte als macOS-Administrator anmelden." });
       const body = await readBody(req);
       return json(res, 200, { analysis: analyzeCompose(body.compose, { envSource: body.env, profiles: Array.isArray(body.profiles) ? body.profiles : [] }) });
+    }
+    if (req.method === "POST" && pathname === "/api/compose/plan") {
+      if (!requireLocalOrigin(req)) return json(res, 403, { error: "Compose-Pläne dürfen nur von der lokalen Oberfläche erstellt werden." });
+      if (!currentSession(req)) return json(res, 401, { error: "Bitte als macOS-Administrator anmelden." });
+      const body = await readBody(req);
+      return json(res, 200, { plan: createComposePlan(body.compose, { envSource: body.env, profiles: Array.isArray(body.profiles) ? body.profiles : [], stackName: body.stackName }) });
+    }
+    if (req.method === "POST" && pathname === "/api/compose/preflight") {
+      if (!requireLocalOrigin(req)) return json(res, 403, { error: "Compose-Vorabprüfungen dürfen nur von der lokalen Oberfläche ausgeführt werden." });
+      if (!currentSession(req)) return json(res, 401, { error: "Bitte als macOS-Administrator anmelden." });
+      const body = await readBody(req);
+      const plan = createComposePlan(body.compose, { envSource: body.env, profiles: Array.isArray(body.profiles) ? body.profiles : [], stackName: body.stackName });
+      const { containers } = await currentState();
+      return json(res, 200, { plan, preflight: preflightComposePlan(plan, containers) });
     }
     if (req.method === "POST" && pathname === "/api/compose/source") {
       if (!requireLocalOrigin(req)) return json(res, 403, { error: "Compose-Projekte dürfen nur von der lokalen Oberfläche geladen werden." });

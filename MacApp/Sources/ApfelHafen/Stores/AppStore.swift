@@ -36,11 +36,14 @@ final class AppStore {
     containerServiceRunning = (try? ProcessRunner.run("/usr/local/bin/container", ["system", "status"], timeout: 5))?.contains("running") == true
     let statusOutput = try? ProcessRunner.run("/usr/bin/curl", ["--insecure", "--silent", "--fail", "--max-time", "2", "https://127.0.0.1:4173/api/status"], timeout: 4)
     serverReachable = statusOutput != nil
-    let serverVersion = statusOutput
+    let serverStatus = statusOutput
       .flatMap { $0.data(using: .utf8) }
-      .flatMap { try? JSONDecoder().decode(ServerStatus.self, from: $0).version }
+      .flatMap { try? JSONDecoder().decode(ServerStatus.self, from: $0) }
     let bundleVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
-    serviceUpdateRequired = serverReachable && serverVersion != bundleVersion
+    let bundledBuild = Bundle.main.resourceURL
+      .map { $0.appending(path: "Server/BUILD-ID.txt") }
+      .flatMap { try? String(contentsOf: $0, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines) }
+    serviceUpdateRequired = serverReachable && (serverStatus?.version != bundleVersion || serverStatus?.build != bundledBuild)
     loadSettings()
   }
 

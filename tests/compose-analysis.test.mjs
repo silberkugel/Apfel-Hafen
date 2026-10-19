@@ -117,3 +117,9 @@ services:
   assert.equal(result.compatible, false);
   assert.ok(result.diagnostics.some((item) => item.code === "inactive-dependency"));
 });
+
+test("extended port syntax remains visible but blocks a runtime plan", () => {
+  const result = analyzeCompose("services:\n  web:\n    image: example/web\n    ports: [\"127.0.0.1:8080:80\"]");
+  assert.equal(result.compatible, true);
+  assert.ok(result.diagnostics.some((item) => item.code === "unsupported-port" && item.level === "warning"));
+});

@@ -9,6 +9,7 @@ afterEach(cleanup);
 const analysis = {
   readOnly: true,
   compatible: true,
+  project: { name: "demo" },
   summary: { services: 2, activeServices: 2, warnings: 0, errors: 0 },
   startOrder: ["database", "web"],
   services: [
@@ -47,5 +48,31 @@ describe("ComposeCenter", () => {
     await waitFor(() => expect(screen.getByText(/OpenTalk \/ Setup · v1\.0\.0/)).toBeTruthy());
     expect(screen.getByPlaceholderText(/services:/).value).toContain("example/web");
     expect(request).toHaveBeenCalledWith("/api/compose/source", expect.objectContaining({ method: "POST" }));
+  });
+
+  test("creates and renders a read-only stack execution plan", async () => {
+    const plan = {
+      readOnly: true, ready: true, planId: "0123456789abcdef", stackName: "demo", decisions: [],
+      phases: {
+        networks: [{ composeName: "default", runtimeName: "demo-default" }],
+        volumes: [{ composeName: "data", runtimeName: "demo-data" }],
+        start: ["demo-database", "demo-web"], stop: ["demo-web", "demo-database"],
+      },
+    };
+    const request = vi.fn()
+      .mockResolvedValueOnce({ analysis })
+      .mockResolvedValueOnce({ plan })
+      .mockResolvedValueOnce({ plan, preflight: { readOnly: true, ready: true, planId: plan.planId, checks: { existingContainers: 1, plannedContainers: 2, publishedPorts: 1 }, conflicts: [] } });
+    render(<ComposeCenter request={request} language="de" authenticated onAnalysis={() => {}} />);
+    fireEvent.change(screen.getByPlaceholderText(/services:/), { target: { value: "services:\n  web:\n    image: example/web:v1" } });
+    fireEvent.click(screen.getByRole("button", { name: "Projekt analysieren" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Ausführungsplan erstellen" })).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "Ausführungsplan erstellen" }));
+    await waitFor(() => expect(screen.getByText(/Bereit für die spätere Ausführung/)).toBeTruthy());
+    expect(screen.getByText(/0123456789abcdef/)).toBeTruthy();
+    expect(screen.getAllByText("demo-web").length).toBe(2);
+    fireEvent.click(screen.getByRole("button", { name: "Auf diesem Mac vorab prüfen" }));
+    await waitFor(() => expect(screen.getByText(/Keine lokalen Konflikte erkannt/)).toBeTruthy());
+    expect(request).toHaveBeenLastCalledWith("/api/compose/preflight", expect.objectContaining({ method: "POST" }));
   });
 });
