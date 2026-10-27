@@ -18,6 +18,7 @@ enum ServiceState: Equatable {
 
 struct RuntimeSettings: Codable {
   var volumeBasePath: String
+  var backupBasePath: String?
   var listenHost: String
 }
 

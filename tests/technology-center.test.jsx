@@ -19,6 +19,7 @@ const snapshot = {
   containers: {
     systemRunning: true, total: 1, running: 1, cpuPercent: 8, memoryUsageBytes: 212_000_000, memoryLimitBytes: 1_073_741_824,
     disk: { sizeBytes: 18_400_000_000, reclaimableBytes: 5_100_000_000 }, statsError: "",
+    storage: { appRoot: "/Users/test/Library/Application Support/com.apple.container", snapshotsBytes: 3_865_470_566, imagesBytes: 998_244_352, externalMoveSupported: false },
     items: [{ name: "web", image: "nginx:latest", status: "running", cpus: 2, cpuPercent: 8, memoryUsageBytes: 212_000_000, memoryLimitBytes: 1_073_741_824, networkRxBytesPerSecond: 1200, networkTxBytesPerSecond: 300, blockReadBytesPerSecond: 0, blockWriteBytesPerSecond: 100, numProcesses: 6 }],
   },
   recommendations: [{ severity: "info", code: "reclaimableStorage" }],
@@ -38,6 +39,10 @@ describe("TechnologyCenter", () => {
     expect(screen.getByText("System")).toBeTruthy();
     expect(screen.getByRole("button", { name: "web" })).toBeTruthy();
     expect(screen.getByText(/rückgewinnbar/)).toBeTruthy();
+    expect(screen.getByText("Snapshots")).toBeTruthy();
+    expect(screen.getByText("3,6 GB")).toBeTruthy();
+    expect(screen.getByText("Images und Inhalte")).toBeTruthy();
+    expect(screen.getByText(/nicht zuverlässig/)).toBeTruthy();
   });
 
   test("protects monitoring data before sign-in", () => {

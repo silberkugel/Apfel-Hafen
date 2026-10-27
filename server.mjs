@@ -72,10 +72,13 @@ const bundledNode = join(root, "runtime", "node");
 const expectedNode = existsSync(bundledNode) ? bundledNode : process.execPath;
 const expectedServer = join(root, "server.mjs");
 const settingsPath = appPaths.settings;
-const defaultSettings = { volumeBasePath: join(homedir(), "ContainerVolumes"), listenHost: localListenHost };
+const backupLocationMarker = ".apfel-hafen-backup-location";
+const defaultSettings = { volumeBasePath: join(homedir(), "ContainerVolumes"), backupBasePath: appPaths.backups, listenHost: localListenHost };
 const englishMessages = new Map([
   ["Die Administrationseinstellungen konnten nicht gelesen werden.", "Administration settings could not be read."],
   ["Bitte einen gültigen absoluten Volume-Pfad angeben.", "Enter a valid absolute volume path."],
+  ["Bitte einen gültigen absoluten Sicherungspfad angeben.", "Enter a valid absolute backup path."],
+  ["Das Sicherungsziel ist nicht verfügbar. Bitte das externe Laufwerk verbinden oder in den Systemeinstellungen einen anderen Sicherungspfad wählen.", "The backup destination is unavailable. Connect the external drive or choose another backup path in system settings."],
   ["Ungültige Einstellung für den Netzwerkzugriff.", "Invalid network access setting."],
   ["Das Zertifikat ist ungültig.", "The certificate is invalid."],
   ["Der private Schlüssel ist ungültig.", "The private key is invalid."],
@@ -217,6 +220,38 @@ async function setVolumeBasePath(value) {
   return settings;
 }
 
+async function setBackupBasePath(value) {
+  const backupBasePath = String(value || "").trim();
+  if (!isAbsolute(backupBasePath) || backupBasePath.length > 500) throw new Error("Bitte einen gültigen absoluten Sicherungspfad angeben.");
+  const resolvedPath = resolve(backupBasePath);
+  if (resolvedPath === resolve(appPaths.backups)) {
+    await mkdir(resolvedPath, { recursive: true, mode: 0o700 });
+  } else {
+    const directoryAvailable = await stat(resolvedPath).then((item) => item.isDirectory()).catch(() => false);
+    if (!directoryAvailable) throw new Error("Das Sicherungsziel ist nicht verfügbar. Bitte das externe Laufwerk verbinden oder in den Systemeinstellungen einen anderen Sicherungspfad wählen.");
+  }
+  const probe = join(resolvedPath, `.apfel-hafen-write-test-${randomBytes(6).toString("hex")}`);
+  try { await writeFile(probe, "ok", { mode: 0o600 }); } finally { await rm(probe, { force: true }).catch(() => {}); }
+  await writeFile(join(resolvedPath, backupLocationMarker), "Apfel-Hafen backup destination\n", { mode: 0o600 });
+  const settings = { ...(await readSettings()), backupBasePath: resolvedPath };
+  await saveSettings(settings);
+  return settings;
+}
+
+async function requireBackupBasePath(settings) {
+  const backupBasePath = resolve(settings.backupBasePath || appPaths.backups);
+  const directoryAvailable = await stat(backupBasePath).then((item) => item.isDirectory()).catch(() => false);
+  if (!directoryAvailable) throw new Error("Das Sicherungsziel ist nicht verfügbar. Bitte das externe Laufwerk verbinden oder in den Systemeinstellungen einen anderen Sicherungspfad wählen.");
+  const marker = join(backupBasePath, backupLocationMarker);
+  const markerAvailable = await stat(marker).then((item) => item.isFile()).catch(() => false);
+  if (!markerAvailable && backupBasePath === resolve(appPaths.backups)) {
+    await writeFile(marker, "Apfel-Hafen backup destination\n", { mode: 0o600 });
+    return backupBasePath;
+  }
+  if (!markerAvailable) throw new Error("Das Sicherungsziel ist nicht verfügbar. Bitte das externe Laufwerk verbinden oder in den Systemeinstellungen einen anderen Sicherungspfad wählen.");
+  return backupBasePath;
+}
+
 async function selectVolumeBasePath(language) {
   const prompt = language === "en" ? "Select the global folder for container volumes" : "Globalen Ordner für Container-Volumes auswählen";
   const result = await runProcess("/usr/bin/osascript", [
@@ -227,6 +262,16 @@ async function selectVolumeBasePath(language) {
     throw new Error(result.stderr || "Der Ordnerdialog konnte nicht geöffnet werden.");
   }
   return { canceled: false, volumeBasePath: resolve(result.stdout) };
+}
+
+async function selectBackupBasePath(language) {
+  const prompt = language === "en" ? "Select the global folder for Apfel-Hafen backups" : "Globalen Ordner für Apfel-Hafen-Sicherungen auswählen";
+  const result = await runProcess("/usr/bin/osascript", ["-e", `POSIX path of (choose folder with prompt ${JSON.stringify(prompt)})`], "", 300_000);
+  if (result.code !== 0) {
+    if (/User canceled/i.test(result.stderr)) return { canceled: true };
+    throw new Error(result.stderr || "Der Ordnerdialog konnte nicht geöffnet werden.");
+  }
+  return { canceled: false, backupBasePath: resolve(result.stdout) };
 }
 
 function shellQuote(value) {
@@ -471,8 +516,9 @@ async function diagnoseStack(name) {
 async function backupStack(name) {
   const manifest = await readStack(name);
   const settings = await readSettings();
+  const backupBasePath = await requireBackupBasePath(settings);
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-  const target = join(appPaths.backups, "stacks", name, stamp);
+  const target = join(backupBasePath, "stacks", name, stamp);
   await mkdir(target, { recursive: true, mode: 0o700 });
   await writeFile(join(target, "manifest.json"), JSON.stringify(manifest, null, 2), { mode: 0o600 });
   const volumeSource = join(settings.volumeBasePath, name);
@@ -482,7 +528,9 @@ async function backupStack(name) {
 
 async function listStackBackups(name) {
   stackFile(name);
-  const folder = join(appPaths.backups, "stacks", name);
+  const settings = await readSettings();
+  const backupBasePath = await requireBackupBasePath(settings);
+  const folder = join(backupBasePath, "stacks", name);
   const entries = await readdir(folder, { withFileTypes: true }).catch(() => []);
   return entries.filter((entry) => entry.isDirectory() && /^[0-9T-]+Z$/.test(entry.name)).map((entry) => ({ id: entry.name })).sort((a, b) => b.id.localeCompare(a.id));
 }
@@ -490,11 +538,12 @@ async function listStackBackups(name) {
 async function restoreLatestStackBackup(name) {
   const backups = await listStackBackups(name);
   if (!backups.length) throw new Error("Für diesen Stack ist noch keine Sicherung vorhanden.");
-  const backupPath = join(appPaths.backups, "stacks", name, backups[0].id);
+  const settings = await readSettings();
+  const backupBasePath = await requireBackupBasePath(settings);
+  const backupPath = join(backupBasePath, "stacks", name, backups[0].id);
   const restored = JSON.parse(await readFile(join(backupPath, "manifest.json"), "utf8"));
   const integrity = verifyStackManifest(restored);
   if (!integrity.valid) throw new Error(`Die Sicherung ist beschädigt: ${integrity.reason}`);
-  const settings = await readSettings();
   const volumeTarget = join(settings.volumeBasePath, name);
   const rollbackPath = `${volumeTarget}.rollback-${randomBytes(6).toString("hex")}`;
   const hadVolumes = await stat(volumeTarget).then((item) => item.isDirectory()).catch(() => false);
@@ -593,6 +642,11 @@ async function commandOutput(program, args) {
   }
 }
 
+function kilobytesFromDu(output) {
+  const value = Number(String(output || "").trim().split(/\s+/, 1)[0]);
+  return Number.isFinite(value) ? value * 1024 : null;
+}
+
 async function technologySnapshot() {
   let currentCpu = cpuTotals(cpus());
   const cpuBaseline = previousHostCpu || currentCpu;
@@ -614,6 +668,14 @@ async function technologySnapshot() {
     runContainerOnce(["list", "--all", "--format", "json"], 20_000).then((output) => ({ ok: true, output })).catch((error) => ({ ok: false, error: error.message })),
     runContainerOnce(["stats", "--no-stream", "--format", "json"], 30_000).then((output) => ({ ok: true, output })).catch((error) => ({ ok: false, error: error.message })),
     runContainerOnce(["system", "df", "--format", "json"], 30_000).then((output) => ({ ok: true, output })).catch((error) => ({ ok: false, error: error.message })),
+  ]);
+  let containerAppRoot = join(homedir(), "Library", "Application Support", "com.apple.container");
+  if (statusResult.ok) {
+    try { containerAppRoot = JSON.parse(statusResult.output).appRoot || containerAppRoot; } catch {}
+  }
+  const [snapshotDiskOutput, contentDiskOutput] = await Promise.all([
+    commandOutput("/usr/bin/du", ["-sk", join(containerAppRoot, "snapshots")]),
+    commandOutput("/usr/bin/du", ["-sk", join(containerAppRoot, "content")]),
   ]);
 
   const memory = parseMemoryPressure(pressureOutput, parseVmStat(vmStatOutput, totalmem()));
@@ -671,6 +733,13 @@ async function technologySnapshot() {
       memoryLimitBytes: items.reduce((sum, item) => sum + (item.memoryLimitBytes || 0), 0),
       items,
       disk: containerDisk,
+      storage: {
+        appRoot: containerAppRoot,
+        snapshotsBytes: kilobytesFromDu(snapshotDiskOutput),
+        imagesBytes: kilobytesFromDu(contentDiskOutput),
+        externalMoveSupported: false,
+        reason: "appleContainerExternalAppRootUnreliable",
+      },
       statsError: statsResult.ok ? "" : statsResult.error,
       diskError: containerDiskResult.ok ? "" : containerDiskResult.error,
     },
@@ -997,7 +1066,9 @@ async function checkUpdate(name) {
 }
 
 async function saveBackup(name, record, update) {
-  const backupDir = join(appPaths.backups, name.replace(/[^a-z0-9._-]/gi, "_"));
+  const settings = await readSettings();
+  const backupBasePath = await requireBackupBasePath(settings);
+  const backupDir = join(backupBasePath, name.replace(/[^a-z0-9._-]/gi, "_"));
   await mkdir(backupDir, { recursive: true });
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
   const backupPath = join(backupDir, `${stamp}.json`);
@@ -1286,6 +1357,7 @@ async function handleApi(req, res, pathname) {
       const body = await readBody(req);
       let settings = await readSettings();
       if (body.volumeBasePath !== undefined) settings = await setVolumeBasePath(body.volumeBasePath);
+      if (body.backupBasePath !== undefined) settings = await setBackupBasePath(body.backupBasePath);
       let changedListenHost = null;
       if (body.listenHost !== undefined) {
         if (!["127.0.0.1", "0.0.0.0"].includes(body.listenHost)) return json(res, 400, { error: "Ungültige Einstellung für den Netzwerkzugriff." });
@@ -1308,6 +1380,13 @@ async function handleApi(req, res, pathname) {
       if (!session) return json(res, 401, { error: "Bitte als macOS-Administrator anmelden." });
       const body = await readBody(req);
       return json(res, 200, await selectVolumeBasePath(body.language));
+    }
+    if (req.method === "POST" && pathname === "/api/administration/select-backup-path") {
+      if (!requireLocalOrigin(req)) return json(res, 403, { error: "Der Ordnerdialog darf nur von der lokalen Oberfläche geöffnet werden." });
+      const session = currentSession(req);
+      if (!session) return json(res, 401, { error: "Bitte als macOS-Administrator anmelden." });
+      const body = await readBody(req);
+      return json(res, 200, await selectBackupBasePath(body.language));
     }
     if (pathname === "/api/administration/certificate" && ["GET", "POST", "DELETE"].includes(req.method)) {
       const session = currentSession(req);
