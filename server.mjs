@@ -20,11 +20,14 @@ import { OperationStore } from "./lib/operation-store.mjs";
 import { currentMcpProtocolVersion, dispatchMcpPayload, mcpBearerAuthorized, validMcpToken, validateModernMcpHeaders } from "./lib/mcp-server.mjs";
 import { buildImageArgs, builderActionArgs, imageActionArgs, parseImages, parseRegistryList, registryAction, safeLogOptions, validateImageReference } from "./lib/container-operations.mjs";
 import { cpuTotals, cpuUsage, parseContainerDiskUsage, parseContainerStats, parseContainerSystemStatus, parseMemoryPressure, parseSwapUsage, parseThermalState, parseVmStat, recommendations } from "./lib/technology-metrics.mjs";
-import { analyzeCompose } from "./lib/compose-analysis.mjs";
+import { analyzeCompose, composeRuntimeDraft } from "./lib/compose-analysis.mjs";
+import { createComposePlan, preflightComposePlan } from "./lib/compose-plan.mjs";
+import { recoveryActions, safeStackSummary, stackManifest } from "./lib/stack-safety.mjs";
 
 const root = fileURLToPath(new URL(".", import.meta.url));
 const appPaths = await prepareApplicationData(root);
 const appVersion = JSON.parse(await readFile(join(root, "package.json"), "utf8")).version;
+const appBuild = (await readFile(join(root, "BUILD-ID.txt"), "utf8").catch(() => "development")).trim() || "development";
 const isDev = process.argv.includes("--dev");
 const port = Number(process.env.PORT || (isDev ? 4174 : 4173));
 const sessionCookieName = isDev ? "apfel_dev_session" : "__Host-apfel_session";
@@ -421,6 +424,97 @@ async function runContainer(args, timeout = 120_000) {
 async function currentState() {
   const output = await runContainer(["list", "--all", "--format", "json"]);
   return { records: JSON.parse(output || "[]"), containers: parseContainers(output) };
+}
+
+function stackFile(name) {
+  if (!/^[a-z0-9][a-z0-9._-]{0,39}$/.test(String(name || ""))) throw new Error("Der Stack-Name ist ungültig.");
+  return join(appPaths.stacks, `${name}.json`);
+}
+
+async function readStack(name) {
+  return JSON.parse(await readFile(stackFile(name), "utf8"));
+}
+
+async function writeStack(manifest) {
+  await writeFile(stackFile(manifest.stackName), JSON.stringify(manifest, null, 2), { mode: 0o600 });
+}
+
+async function listStacks() {
+  const { readdir } = await import("node:fs/promises");
+  const names = await readdir(appPaths.stacks).catch(() => []);
+  const manifests = await Promise.all(names.filter((name) => name.endsWith(".json")).map((name) => readStack(name.slice(0, -5)).catch(() => null)));
+  const { containers } = await currentState();
+  const byName = new Map(containers.map((item) => [item.name, item]));
+  return manifests.filter(Boolean).map((manifest) => ({
+    ...safeStackSummary(manifest),
+    running: manifest.services.filter((service) => byName.get(service.containerName)?.status === "running").length,
+    total: manifest.services.length,
+    recovery: recoveryActions(manifest, containers),
+  }));
+}
+
+function runtimePort(value) {
+  const match = String(value).match(/^(?:(\d+):)?(\d+)(?:\/(tcp|udp))?$/i);
+  if (!match || !match[1]) throw new Error(`Die Portfreigabe „${value}“ ist nicht ausführbar.`);
+  return { hostPort: Number(match[1]), containerPort: Number(match[2]), protocol: (match[3] || "tcp").toLowerCase() };
+}
+
+async function installStack(body) {
+  const options = { envSource: body.env, profiles: Array.isArray(body.profiles) ? body.profiles : [], stackName: body.stackName };
+  const plan = createComposePlan(body.compose, options);
+  if (body.planId !== plan.planId) throw new Error("Der Compose-Inhalt wurde nach der Vorabprüfung verändert. Bitte erneut prüfen.");
+  const { containers } = await currentState();
+  const preflight = preflightComposePlan(plan, containers);
+  if (!preflight.ready) throw new Error("Die Vorabprüfung meldet Konflikte. Der Stack wurde nicht verändert.");
+  const manifest = stackManifest(plan, composeRuntimeDraft(body.compose, options));
+  const settings = await readSettings();
+  const created = [];
+  const networks = [...new Set(manifest.services.map((service) => service.network).filter(Boolean))];
+  try {
+    for (const network of networks) await runContainer(["network", "create", network]).catch((error) => {
+      if (!/already|exists/i.test(error.message)) throw error;
+    });
+    for (const service of manifest.services) {
+      const draft = validateContainerDraft({
+        name: service.containerName, image: service.image, cpus: service.cpus, memoryMb: service.memoryMb,
+        network: service.network, start: false, variables: service.variables,
+        ports: service.ports.map(runtimePort),
+        volumes: service.volumes.map((volume) => ({ subpath: `${manifest.stackName}/${volume.source}`, destination: volume.target, readOnly: volume.readOnly })),
+      }, settings.volumeBasePath, containers.flatMap((item) => item.ports));
+      for (const volume of draft.volumes) await mkdir(volume.source, { recursive: true });
+      await runContainer(buildNewContainerArgs(draft), 600_000);
+      created.push(service.containerName);
+      await runContainer(["start", service.containerName]);
+      if (service.healthcheck?.test?.[0] === "CMD") {
+        let healthy = false;
+        let lastError = null;
+        const retries = Math.min(20, Math.max(1, Number(service.healthcheck.retries) || 5));
+        for (let attempt = 0; attempt < retries; attempt += 1) {
+          try { await runContainer(["exec", service.containerName, ...service.healthcheck.test.slice(1)], 30_000); healthy = true; break; }
+          catch (error) { lastError = error; await new Promise((resolveDelay) => setTimeout(resolveDelay, 1000)); }
+        }
+        if (!healthy) throw new Error(`Healthcheck für „${service.service}“ fehlgeschlagen: ${lastError?.message || "unbekannter Fehler"}`);
+      }
+    }
+    await writeStack(manifest);
+    return { message: `Stack „${manifest.stackName}“ wurde mit ${manifest.services.length} Diensten gestartet.`, stack: safeStackSummary(manifest) };
+  } catch (error) {
+    for (const name of created.reverse()) await runContainer(["delete", "--force", name]).catch(() => {});
+    throw new Error(`Der Stack wurde nicht vollständig gestartet; neu angelegte Container wurden zurückgerollt. Ursache: ${error.message}`);
+  }
+}
+
+async function stackAction(name, action) {
+  const manifest = await readStack(name);
+  const order = action === "stop" ? [...manifest.services].reverse() : manifest.services;
+  const command = action === "stop" ? "stop" : "start";
+  for (const service of order) await runContainer([command, service.containerName]).catch((error) => {
+    if (!/already|not running|running/i.test(error.message)) throw error;
+  });
+  manifest.desiredState = action === "stop" ? "stopped" : "running";
+  manifest.lastActionAt = new Date().toISOString();
+  await writeStack(manifest);
+  return { message: `Stack „${name}“ wurde ${action === "stop" ? "gestoppt" : "gestartet"}.`, stack: safeStackSummary(manifest) };
 }
 
 async function commandOutput(program, args) {
@@ -993,7 +1087,7 @@ async function handleApi(req, res, pathname) {
     }
     if (req.method === "GET" && pathname === "/api/status") {
       const settings = await readSettings();
-      return json(res, 200, { version: appVersion, protocol: "HTTPS", listenHost: settings.listenHost, certificateSource: activeTls.status.source, containerCli });
+      return json(res, 200, { version: appVersion, build: appBuild, protocol: "HTTPS", listenHost: settings.listenHost, certificateSource: activeTls.status.source, containerCli });
     }
     if (req.method === "GET" && pathname === "/api/technology/overview") {
       if (!currentSession(req)) return json(res, 401, { error: "Bitte als macOS-Administrator anmelden." });
@@ -1251,6 +1345,35 @@ async function handleApi(req, res, pathname) {
       if (!currentSession(req)) return json(res, 401, { error: "Bitte als macOS-Administrator anmelden." });
       const body = await readBody(req);
       return json(res, 200, { analysis: analyzeCompose(body.compose, { envSource: body.env, profiles: Array.isArray(body.profiles) ? body.profiles : [] }) });
+    }
+    if (req.method === "POST" && pathname === "/api/compose/plan") {
+      if (!requireLocalOrigin(req)) return json(res, 403, { error: "Compose-Pläne dürfen nur von der lokalen Oberfläche erstellt werden." });
+      if (!currentSession(req)) return json(res, 401, { error: "Bitte als macOS-Administrator anmelden." });
+      const body = await readBody(req);
+      return json(res, 200, { plan: createComposePlan(body.compose, { envSource: body.env, profiles: Array.isArray(body.profiles) ? body.profiles : [], stackName: body.stackName }) });
+    }
+    if (req.method === "POST" && pathname === "/api/compose/preflight") {
+      if (!requireLocalOrigin(req)) return json(res, 403, { error: "Compose-Vorabprüfungen dürfen nur von der lokalen Oberfläche ausgeführt werden." });
+      if (!currentSession(req)) return json(res, 401, { error: "Bitte als macOS-Administrator anmelden." });
+      const body = await readBody(req);
+      const plan = createComposePlan(body.compose, { envSource: body.env, profiles: Array.isArray(body.profiles) ? body.profiles : [], stackName: body.stackName });
+      const { containers } = await currentState();
+      return json(res, 200, { plan, preflight: preflightComposePlan(plan, containers) });
+    }
+    if (req.method === "GET" && pathname === "/api/stacks") {
+      if (!currentSession(req)) return json(res, 401, { error: "Bitte als macOS-Administrator anmelden." });
+      return json(res, 200, { stacks: await listStacks() });
+    }
+    if (req.method === "POST" && pathname === "/api/stacks") {
+      if (!requireLocalOrigin(req)) return json(res, 403, { error: "Stacks dürfen nur von der lokalen Oberfläche installiert werden." });
+      if (!currentSession(req)) return json(res, 401, { error: "Bitte als macOS-Administrator anmelden." });
+      return json(res, 201, { ok: true, ...(await installStack(await readBody(req))) });
+    }
+    const stackActionMatch = pathname.match(/^\/api\/stacks\/([^/]+)\/(start|stop)$/);
+    if (req.method === "POST" && stackActionMatch) {
+      if (!requireLocalOrigin(req)) return json(res, 403, { error: "Stack-Aktionen sind nur von der lokalen Oberfläche erlaubt." });
+      if (!currentSession(req)) return json(res, 401, { error: "Bitte als macOS-Administrator anmelden." });
+      return json(res, 200, { ok: true, ...(await stackAction(decodeURIComponent(stackActionMatch[1]), stackActionMatch[2])) });
     }
     if (req.method === "POST" && pathname === "/api/compose/source") {
       if (!requireLocalOrigin(req)) return json(res, 403, { error: "Compose-Projekte dürfen nur von der lokalen Oberfläche geladen werden." });
