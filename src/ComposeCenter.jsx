@@ -10,8 +10,8 @@ const copy = {
   },
 };
 
-Object.assign(copy.de, { installStack: "Stack jetzt installieren", installingStack: "Stack wird installiert …", installWarning: "Die geprüften Container und Datenordner werden jetzt angelegt und gestartet.", installDone: "Stack wurde sicher installiert.", managedStacks: "Installierte Stacks", runningServices: "laufende Dienste", startStack: "Starten", stopStack: "Stoppen", recoveryPending: "Wiederanlauf nötig" });
-Object.assign(copy.en, { installStack: "Install stack now", installingStack: "Installing stack …", installWarning: "The checked containers and data folders will now be created and started.", installDone: "Stack was installed safely.", managedStacks: "Installed stacks", runningServices: "running services", startStack: "Start", stopStack: "Stop", recoveryPending: "Recovery required" });
+Object.assign(copy.de, { installStack: "Stack jetzt installieren", installingStack: "Stack wird installiert …", installWarning: "Die geprüften Container und Datenordner werden jetzt angelegt und gestartet.", installDone: "Stack wurde sicher installiert.", managedStacks: "Installierte Stacks", runningServices: "laufende Dienste", startStack: "Starten", stopStack: "Stoppen", recoveryPending: "Wiederanlauf nötig", diagnoseStack: "Diagnose", backupStack: "Sichern", restoreStack: "Letzte Sicherung", restoreWarning: "Der Stack wird gestoppt und auf den letzten gesicherten Stand zurückgesetzt. Fortfahren?", stackHealthy: "Betrieb ist in Ordnung", backupDone: "Sicherung wurde angelegt" });
+Object.assign(copy.en, { installStack: "Install stack now", installingStack: "Installing stack …", installWarning: "The checked containers and data folders will now be created and started.", installDone: "Stack was installed safely.", managedStacks: "Installed stacks", runningServices: "running services", startStack: "Start", stopStack: "Stop", recoveryPending: "Recovery required", diagnoseStack: "Diagnose", backupStack: "Back up", restoreStack: "Latest backup", restoreWarning: "The stack will stop and return to its latest backed-up state. Continue?", stackHealthy: "Operation is healthy", backupDone: "Backup created" });
 
 async function selectedFile(event, setName, setValue, t, setError, reset) {
   const file = event.target.files?.[0];
@@ -60,6 +60,7 @@ export default function ComposeCenter({ request, language, authenticated, onAnal
   const [profiles, setProfiles] = useState("");
   const [projectUrl, setProjectUrl] = useState("");
   const [origin, setOrigin] = useState("");
+  const [adapter, setAdapter] = useState(null);
   const [sourceBusy, setSourceBusy] = useState(false);
   const [analysis, setAnalysis] = useState(null);
   const [plan, setPlan] = useState(null);
@@ -72,6 +73,7 @@ export default function ComposeCenter({ request, language, authenticated, onAnal
   const [installed, setInstalled] = useState("");
   const [stacks, setStacks] = useState([]);
   const [stackBusy, setStackBusy] = useState("");
+  const [stackNotice, setStackNotice] = useState("");
   const [error, setError] = useState("");
 
   async function loadStacks() {
@@ -84,6 +86,18 @@ export default function ComposeCenter({ request, language, authenticated, onAnal
     setStackBusy(name); setError("");
     try { await request(`/api/stacks/${encodeURIComponent(name)}/${action}`, { method: "POST" }); await loadStacks(); }
     catch (reason) { setError(reason.message); }
+    finally { setStackBusy(""); }
+  }
+
+  async function safetyAction(name, action) {
+    if (action === "restore" && !window.confirm(t.restoreWarning)) return;
+    setStackBusy(name); setError(""); setStackNotice("");
+    try {
+      const data = await request(`/api/stacks/${encodeURIComponent(name)}/${action}`, { method: ["backup", "restore"].includes(action) ? "POST" : "GET" });
+      if (["backup", "restore"].includes(action)) setStackNotice(`${name}: ${data.message || t.backupDone}`);
+      else setStackNotice(`${name}: ${data.diagnosis?.healthy ? t.stackHealthy : `${data.diagnosis?.actions?.length || 0} ${t.recoveryPending}`}`);
+      await loadStacks();
+    } catch (reason) { setError(reason.message); }
     finally { setStackBusy(""); }
   }
 
@@ -136,6 +150,8 @@ export default function ComposeCenter({ request, language, authenticated, onAnal
       setCompose(data.source.compose); setComposeName(data.source.composeName);
       setEnv(data.source.env || ""); setEnvName(data.source.envName || "");
       setOrigin(`${data.source.projectName} · ${data.source.ref}`);
+      setAdapter(data.source.adapter || null);
+      if (data.source.adapter?.defaultProfiles?.length) setProfiles(data.source.adapter.defaultProfiles.join(", "));
       setAnalysis(null); setPlan(null); setPreflight(null); setStackName(""); onAnalysis?.(null);
     } catch (reason) { setError(reason.message); }
     finally { setSourceBusy(false); }
@@ -143,7 +159,7 @@ export default function ComposeCenter({ request, language, authenticated, onAnal
 
   return <section className="panel compose-center">
     <div className="compose-heading"><div><h2>{t.title}</h2><p>{t.intro}</p></div><span>READ ONLY</span></div>
-    {stacks.length > 0 && <section className="compose-stacks"><h3>{t.managedStacks}</h3>{stacks.map((stack) => <article key={stack.stackName}><div><strong>{stack.stackName}</strong><small>{stack.running}/{stack.total} {t.runningServices}{stack.recovery?.length ? ` · ${t.recoveryPending}` : ""}</small></div><div className="button-row"><button type="button" disabled={stackBusy === stack.stackName || stack.running === stack.total} onClick={() => changeStack(stack.stackName, "start")}>{t.startStack}</button><button type="button" disabled={stackBusy === stack.stackName || stack.running === 0} onClick={() => changeStack(stack.stackName, "stop")}>{t.stopStack}</button></div></article>)}</section>}
+    {stacks.length > 0 && <section className="compose-stacks"><h3>{t.managedStacks}</h3>{stacks.map((stack) => <article key={stack.stackName}><div><strong>{stack.stackName}</strong><small>{stack.running}/{stack.total} {t.runningServices}{stack.recovery?.length ? ` · ${t.recoveryPending}` : ""}</small></div><div className="button-row"><button type="button" disabled={stackBusy === stack.stackName || stack.running === stack.total} onClick={() => changeStack(stack.stackName, "start")}>{t.startStack}</button><button type="button" disabled={stackBusy === stack.stackName || stack.running === 0} onClick={() => changeStack(stack.stackName, "stop")}>{t.stopStack}</button><button type="button" disabled={stackBusy === stack.stackName} onClick={() => safetyAction(stack.stackName, "diagnose")}>{t.diagnoseStack}</button><button type="button" disabled={stackBusy === stack.stackName} onClick={() => safetyAction(stack.stackName, "backup")}>{t.backupStack}</button><button type="button" disabled={stackBusy === stack.stackName} onClick={() => safetyAction(stack.stackName, "restore")}>{t.restoreStack}</button></div></article>)}{stackNotice && <p className="message success">✓ {stackNotice}</p>}</section>}
     <form className="compose-input" onSubmit={runAnalysis}>
       <div className="compose-files">
         <label className="compose-file"><strong>{t.projectFolder}</strong><input type="file" webkitdirectory="" directory="" multiple onChange={(event) => selectedProject(event, { setCompose, setComposeName, setEnv, setEnvName, setOrigin }, t, setError, clearResults)} /><span>{t.choose}</span><small>{t.folderHelp}</small></label>
@@ -152,6 +168,7 @@ export default function ComposeCenter({ request, language, authenticated, onAnal
       </div>
       <div className="compose-remote"><label><span>{t.openCodeProject}</span><input value={projectUrl} onChange={(event) => setProjectUrl(event.target.value)} placeholder="https://gitlab.opencode.de/opentalk/ot-setup" /><small>{t.remoteHelp}</small></label><button type="button" disabled={!authenticated || projectUrl.trim().length < 3 || sourceBusy} onClick={loadOpenCodeProject}>{sourceBusy ? t.loadingProject : t.loadProject}</button></div>
       {origin && <p className="compose-origin">{t.loadedFrom}: <strong>{origin}</strong></p>}
+      {adapter && <div className="compose-adapter"><strong>{adapter.label}</strong><span>{adapter.notice}</span></div>}
       <label className="compose-source"><span>{t.paste}</span><textarea value={compose} onChange={(event) => { setCompose(event.target.value); setComposeName(""); clearResults(); }} placeholder={"services:\n  web:\n    image: nginx:latest"} /></label>
       <div className="compose-options"><label><span>{t.profiles}</span><input value={profiles} onChange={(event) => { setProfiles(event.target.value); clearResults(); }} placeholder="frontend, monitoring" /><small>{t.profilesHelp}</small></label><button className="primary" disabled={!authenticated || !compose.trim() || busy}>{busy ? t.analyzing : t.analyze}</button></div>
       <p className="compose-privacy">⌾ {authenticated ? t.privacy : t.login}</p>

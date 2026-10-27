@@ -1,7 +1,7 @@
 import { createServer } from "node:https";
 import { spawn } from "node:child_process";
 import { createReadStream, existsSync } from "node:fs";
-import { chmod, mkdtemp, mkdir, readFile, rm, stat, statfs, writeFile } from "node:fs/promises";
+import { chmod, cp, mkdtemp, mkdir, readFile, readdir, rename, rm, stat, statfs, writeFile } from "node:fs/promises";
 import { randomBytes } from "node:crypto";
 import { extname, isAbsolute, join, normalize, relative, resolve } from "node:path";
 import { arch, cpus, homedir, loadavg, release, totalmem, uptime } from "node:os";
@@ -22,7 +22,7 @@ import { buildImageArgs, builderActionArgs, imageActionArgs, parseImages, parseR
 import { cpuTotals, cpuUsage, parseContainerDiskUsage, parseContainerStats, parseContainerSystemStatus, parseMemoryPressure, parseSwapUsage, parseThermalState, parseVmStat, recommendations } from "./lib/technology-metrics.mjs";
 import { analyzeCompose, composeRuntimeDraft } from "./lib/compose-analysis.mjs";
 import { createComposePlan, preflightComposePlan } from "./lib/compose-plan.mjs";
-import { recoveryActions, safeStackSummary, stackManifest } from "./lib/stack-safety.mjs";
+import { recoveryActions, safeStackSummary, stackManifest, verifyStackManifest } from "./lib/stack-safety.mjs";
 
 const root = fileURLToPath(new URL(".", import.meta.url));
 const appPaths = await prepareApplicationData(root);
@@ -440,7 +440,6 @@ async function writeStack(manifest) {
 }
 
 async function listStacks() {
-  const { readdir } = await import("node:fs/promises");
   const names = await readdir(appPaths.stacks).catch(() => []);
   const manifests = await Promise.all(names.filter((name) => name.endsWith(".json")).map((name) => readStack(name.slice(0, -5)).catch(() => null)));
   const { containers } = await currentState();
@@ -451,6 +450,74 @@ async function listStacks() {
     total: manifest.services.length,
     recovery: recoveryActions(manifest, containers),
   }));
+}
+
+async function diagnoseStack(name) {
+  const manifest = await readStack(name);
+  const integrity = verifyStackManifest(manifest);
+  const { containers } = await currentState();
+  const byName = new Map(containers.map((item) => [item.name, item]));
+  const settings = await readSettings();
+  const volumePath = join(settings.volumeBasePath, manifest.stackName);
+  const volumeAvailable = await stat(volumePath).then((item) => item.isDirectory()).catch(() => false);
+  const services = manifest.services.map((service) => ({
+    service: service.service, containerName: service.containerName,
+    status: byName.get(service.containerName)?.status || "missing",
+  }));
+  const actions = integrity.valid ? recoveryActions(manifest, containers) : [];
+  return { checkedAt: new Date().toISOString(), integrity, volumeAvailable, desiredState: manifest.desiredState, services, actions, healthy: integrity.valid && services.every((item) => item.status !== "missing") && actions.length === 0 };
+}
+
+async function backupStack(name) {
+  const manifest = await readStack(name);
+  const settings = await readSettings();
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const target = join(appPaths.backups, "stacks", name, stamp);
+  await mkdir(target, { recursive: true, mode: 0o700 });
+  await writeFile(join(target, "manifest.json"), JSON.stringify(manifest, null, 2), { mode: 0o600 });
+  const volumeSource = join(settings.volumeBasePath, name);
+  if (await stat(volumeSource).then((item) => item.isDirectory()).catch(() => false)) await cp(volumeSource, join(target, "volumes"), { recursive: true });
+  return { message: `Stack „${name}“ wurde gesichert.`, backup: { id: stamp, createdAt: new Date().toISOString(), includesVolumes: existsSync(join(target, "volumes")) } };
+}
+
+async function listStackBackups(name) {
+  stackFile(name);
+  const folder = join(appPaths.backups, "stacks", name);
+  const entries = await readdir(folder, { withFileTypes: true }).catch(() => []);
+  return entries.filter((entry) => entry.isDirectory() && /^[0-9T-]+Z$/.test(entry.name)).map((entry) => ({ id: entry.name })).sort((a, b) => b.id.localeCompare(a.id));
+}
+
+async function restoreLatestStackBackup(name) {
+  const backups = await listStackBackups(name);
+  if (!backups.length) throw new Error("Für diesen Stack ist noch keine Sicherung vorhanden.");
+  const backupPath = join(appPaths.backups, "stacks", name, backups[0].id);
+  const restored = JSON.parse(await readFile(join(backupPath, "manifest.json"), "utf8"));
+  const integrity = verifyStackManifest(restored);
+  if (!integrity.valid) throw new Error(`Die Sicherung ist beschädigt: ${integrity.reason}`);
+  const settings = await readSettings();
+  const volumeTarget = join(settings.volumeBasePath, name);
+  const rollbackPath = `${volumeTarget}.rollback-${randomBytes(6).toString("hex")}`;
+  const hadVolumes = await stat(volumeTarget).then((item) => item.isDirectory()).catch(() => false);
+  await stackAction(name, "stop");
+  try {
+    if (hadVolumes) await rename(volumeTarget, rollbackPath);
+    if (existsSync(join(backupPath, "volumes"))) await cp(join(backupPath, "volumes"), volumeTarget, { recursive: true });
+    await writeStack(restored);
+    if (restored.desiredState === "running") await stackAction(name, "start");
+    if (hadVolumes) await rm(rollbackPath, { recursive: true, force: true });
+    return { message: `Stack „${name}“ wurde aus der Sicherung ${backups[0].id} wiederhergestellt.`, stack: safeStackSummary(restored) };
+  } catch (error) {
+    await rm(volumeTarget, { recursive: true, force: true }).catch(() => {});
+    if (hadVolumes) await rename(rollbackPath, volumeTarget).catch(() => {});
+    throw new Error(`Wiederherstellung fehlgeschlagen; der vorherige Datenstand wurde zurückgesetzt. Ursache: ${error.message}`);
+  }
+}
+
+async function recoverManagedStacks() {
+  const stacks = await listStacks().catch(() => []);
+  for (const stack of stacks) for (const action of stack.recovery || []) {
+    await runContainer([action.action, action.containerName]).catch((error) => console.error(`Apfel-Hafen: Wiederanlauf ${action.containerName}: ${error.message}`));
+  }
 }
 
 function runtimePort(value) {
@@ -792,7 +859,14 @@ async function openCodeComposeSource(query) {
     env = await openCodeFetch(`projects/${project.id}/repository/files/${encodeURIComponent(file)}/raw?ref=${encodeURIComponent(ref)}`, { optional: true, text: true }) || "";
     if (env) { envName = file; break; }
   }
-  return { compose, composeName, env, envName, projectName: project.name_with_namespace || project.path_with_namespace, projectUrl: project.web_url, ref };
+  const openTalk = input.projectPath.toLowerCase() === "opentalk/ot-setup";
+  return {
+    compose, composeName, env, envName, projectName: project.name_with_namespace || project.path_with_namespace, projectUrl: project.web_url, ref,
+    adapter: openTalk ? {
+      id: "opentalk-original", label: "OpenTalk Originalprojekt", defaultProfiles: ["core"],
+      notice: "OpenTalk benötigt zusätzliche Konfigurationsdateien, Host-Ordner, DNS, TLS und UDP-Freigaben. Apfel-Hafen prüft diese Anforderungen und verhindert eine unvollständige Installation.",
+    } : null,
+  };
 }
 
 async function openCodeProjectImages(project) {
@@ -1375,6 +1449,17 @@ async function handleApi(req, res, pathname) {
       if (!currentSession(req)) return json(res, 401, { error: "Bitte als macOS-Administrator anmelden." });
       return json(res, 200, { ok: true, ...(await stackAction(decodeURIComponent(stackActionMatch[1]), stackActionMatch[2])) });
     }
+    const stackSafetyMatch = pathname.match(/^\/api\/stacks\/([^/]+)\/(diagnose|backup|backups|restore)$/);
+    if (stackSafetyMatch && (req.method === "GET" || req.method === "POST")) {
+      if (req.method === "POST" && !requireLocalOrigin(req)) return json(res, 403, { error: "Stack-Sicherungen sind nur von der lokalen Oberfläche erlaubt." });
+      if (!currentSession(req)) return json(res, 401, { error: "Bitte als macOS-Administrator anmelden." });
+      const name = decodeURIComponent(stackSafetyMatch[1]);
+      if (stackSafetyMatch[2] === "diagnose" && req.method === "GET") return json(res, 200, { diagnosis: await diagnoseStack(name) });
+      if (stackSafetyMatch[2] === "backup" && req.method === "POST") return json(res, 201, { ok: true, ...(await backupStack(name)) });
+      if (stackSafetyMatch[2] === "backups" && req.method === "GET") return json(res, 200, { backups: await listStackBackups(name) });
+      if (stackSafetyMatch[2] === "restore" && req.method === "POST") return json(res, 200, { ok: true, ...(await restoreLatestStackBackup(name)) });
+      return json(res, 405, { error: "Methode nicht erlaubt." });
+    }
     if (req.method === "POST" && pathname === "/api/compose/source") {
       if (!requireLocalOrigin(req)) return json(res, 403, { error: "Compose-Projekte dürfen nur von der lokalen Oberfläche geladen werden." });
       if (!currentSession(req)) return json(res, 401, { error: "Bitte als macOS-Administrator anmelden." });
@@ -1540,5 +1625,6 @@ function scheduleListenHost(host) {
 }
 
 listen((await readSettings()).listenHost);
+setTimeout(() => recoverManagedStacks(), 1500);
 
 if (!validMcpToken(mcpToken)) console.log(`Apfel-Hafen: Remote MCP is disabled; set APFEL_HAFEN_MCP_TOKEN or create ${mcpTokenPath}.`);
