@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createComposePlan, preflightComposePlan } from "../lib/compose-plan.mjs";
+import { composeRuntimeDraft } from "../lib/compose-analysis.mjs";
+import { recoveryActions, safeStackSummary, stackManifest } from "../lib/stack-safety.mjs";
 
 test("creates a deterministic read-only stack plan in dependency order", () => {
   const plan = createComposePlan(`
@@ -76,4 +78,23 @@ test("preflight accepts an available plan and keeps UDP separate from TCP", () =
   const result = preflightComposePlan(plan, [{ name: "web", ports: [{ hostPort: 5353, protocol: "tcp" }] }]);
   assert.equal(result.ready, true);
   assert.equal(result.conflicts.length, 0);
+});
+
+test("builds a confidential runtime manifest without exposing secrets in summaries", () => {
+  const source = "services:\n  api:\n    image: example/api:${TAG}\n    environment:\n      API_TOKEN: ${API_TOKEN}\n    ports: [\"8080:80\"]\n";
+  const options = { envSource: "TAG=1\nAPI_TOKEN=very-secret", stackName: "demo" };
+  const plan = createComposePlan(source, options);
+  const manifest = stackManifest(plan, composeRuntimeDraft(source, options), { createdAt: "2026-10-27T00:00:00.000Z" });
+  assert.equal(manifest.services[0].variables[0].value, "very-secret");
+  assert.doesNotMatch(JSON.stringify(safeStackSummary(manifest)), /very-secret/);
+});
+
+test("recovery respects desired state and restart rules", () => {
+  const manifest = { desiredState: "running", services: [
+    { service: "db", containerName: "demo-db", restart: "unless-stopped" },
+    { service: "job", containerName: "demo-job", restart: "no" },
+  ] };
+  assert.deepEqual(recoveryActions(manifest, []), [{ action: "start", containerName: "demo-db", service: "db" }]);
+  manifest.desiredState = "stopped";
+  assert.deepEqual(recoveryActions(manifest, []), []);
 });

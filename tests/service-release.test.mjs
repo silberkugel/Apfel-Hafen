@@ -137,7 +137,7 @@ test("existing user LaunchAgents can be edited through the protected API", async
   assert.match(client, /launchdDraftFromService/);
 });
 
-test("0.3.4 development metadata and published download names are aligned", async () => {
+test("0.3.4 release metadata and published download names are aligned", async () => {
   const [packageSource, readmeDe, readmeEn, publishedNotes, developmentNotes] = await Promise.all([
     readFile(new URL("../package.json", import.meta.url), "utf8"),
     readFile(new URL("../README-DE.md", import.meta.url), "utf8"),
@@ -147,11 +147,12 @@ test("0.3.4 development metadata and published download names are aligned", asyn
   ]);
 
   assert.equal(JSON.parse(packageSource).version, "0.3.4");
-  assert.match(readmeDe, /Apfel-Hafen-0\.3\.3-macos-arm64\.zip/);
-  assert.match(readmeEn, /Apfel-Hafen-0\.3\.3-macos-arm64\.dmg/);
+  assert.match(readmeDe, /Apfel-Hafen-0\.3\.4-macos-arm64\.zip/);
+  assert.match(readmeEn, /Apfel-Hafen-0\.3\.4-macos-arm64\.dmg/);
   assert.match(publishedNotes, /^# Apfel-Hafen 0\.3\.3$/m);
   assert.match(publishedNotes, /Veröffentlicht am 18\. Oktober 2026\./);
-  assert.match(developmentNotes, /^# Apfel-Hafen 0\.3\.4 \(in Entwicklung\)$/m);
+  assert.match(developmentNotes, /^# Apfel-Hafen 0\.3\.4$/m);
+  assert.match(developmentNotes, /Veröffentlicht am 27\. Oktober 2026\./);
 });
 
 test("container creation offers OpenCode images with version and release date", async () => {

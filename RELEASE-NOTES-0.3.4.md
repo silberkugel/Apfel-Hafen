@@ -1,10 +1,12 @@
-# Apfel-Hafen 0.3.4 (in Entwicklung)
+# Apfel-Hafen 0.3.4
+
+Veröffentlicht am 27. Oktober 2026.
 
 Version 0.3.4 baut auf der sicheren, nur lesenden Compose-Analyse aus 0.3.3
 auf. Das Ziel ist eine kontrollierte Stack-Laufzeit für den geprüften und von
 Apple Container unterstützten Compose-Funktionsumfang.
 
-## Geplanter Umfang
+## Neu
 
 - Einen analysierten Stack als zusammengehörige Einheit anlegen, starten und
   stoppen.
@@ -20,7 +22,7 @@ Apple Container unterstützten Compose-Funktionsumfang.
 - Vor jeder Änderung erneut prüfen, ob der Stack verlustfrei auf Apple
   Container abgebildet werden kann.
 
-## Bereits umgesetzt
+## Planung und Schutz
 
 - Aus einer aktuellen Compose-Analyse kann ein deterministischer, weiterhin
   nur lesender Ausführungsplan erzeugt werden.
@@ -48,5 +50,13 @@ stillschweigend ignoriert. Die Ausführung bleibt gesperrt, bis die Analyse
 einen sicheren, nachvollziehbaren Plan liefern kann oder der Administrator
 eine ausdrücklich unterstützte Entscheidung getroffen hat.
 
-Der genaue Umfang wird während der Entwicklung ergänzt. Fertige Funktionen
-werden erst beim Abschluss von 0.3.4 als veröffentlicht gekennzeichnet.
+- Die Installation wiederholt unmittelbar davor die Vorabprüfung und verwirft
+  veraltete Plan-IDs.
+- Unterstützte Dienste werden in Abhängigkeitsreihenfolge angelegt und
+  gestartet; CMD-Healthchecks werden vor abhängigen Diensten ausgeführt.
+- Bei einem Teilfehler entfernt Apfel-Hafen die in diesem Versuch neu
+  angelegten Container automatisch wieder.
+- Installierte Stacks erscheinen gemeinsam mit ihrem Laufzustand und lassen
+  sich als Einheit starten oder in umgekehrter Reihenfolge stoppen.
+- Stack-Definitionen liegen geschützt in den macOS-Anwendungsdaten; die
+  Oberfläche erhält keine gespeicherten Geheimniswerte zurück.

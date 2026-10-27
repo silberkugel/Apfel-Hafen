@@ -21,7 +21,7 @@ const analysis = {
 
 describe("ComposeCenter", () => {
   test("submits a read-only Compose analysis and renders all relevant properties", async () => {
-    const request = vi.fn().mockResolvedValue({ analysis });
+    const request = vi.fn((url) => Promise.resolve(url === "/api/stacks" ? { stacks: [] } : { analysis }));
     const onAnalysis = vi.fn();
     render(<ComposeCenter request={request} language="de" authenticated onAnalysis={onAnalysis} />);
     fireEvent.change(screen.getByPlaceholderText(/services:/), { target: { value: "services:\n  web:\n    image: example/web:v1" } });
@@ -41,7 +41,7 @@ describe("ComposeCenter", () => {
   });
 
   test("loads a public OpenCode Compose project into the analyzer", async () => {
-    const request = vi.fn().mockResolvedValue({ source: { compose: "services:\n  web:\n    image: example/web", composeName: "compose.yaml", env: "TAG=v1", envName: ".env.example", projectName: "OpenTalk / Setup", ref: "v1.0.0" } });
+    const request = vi.fn((url) => Promise.resolve(url === "/api/stacks" ? { stacks: [] } : { source: { compose: "services:\n  web:\n    image: example/web", composeName: "compose.yaml", env: "TAG=v1", envName: ".env.example", projectName: "OpenTalk / Setup", ref: "v1.0.0" } }));
     render(<ComposeCenter request={request} language="de" authenticated onAnalysis={() => {}} />);
     fireEvent.change(screen.getByPlaceholderText(/gitlab\.opencode\.de/), { target: { value: "https://gitlab.opencode.de/opentalk/ot-setup" } });
     fireEvent.click(screen.getByRole("button", { name: "Projekt laden" }));
@@ -59,10 +59,12 @@ describe("ComposeCenter", () => {
         start: ["demo-database", "demo-web"], stop: ["demo-web", "demo-database"],
       },
     };
-    const request = vi.fn()
-      .mockResolvedValueOnce({ analysis })
-      .mockResolvedValueOnce({ plan })
-      .mockResolvedValueOnce({ plan, preflight: { readOnly: true, ready: true, planId: plan.planId, checks: { existingContainers: 1, plannedContainers: 2, publishedPorts: 1 }, conflicts: [] } });
+    const request = vi.fn((url) => {
+      if (url === "/api/stacks") return Promise.resolve({ stacks: [] });
+      if (url === "/api/compose/analyze") return Promise.resolve({ analysis });
+      if (url === "/api/compose/plan") return Promise.resolve({ plan });
+      return Promise.resolve({ plan, preflight: { readOnly: true, ready: true, planId: plan.planId, checks: { existingContainers: 1, plannedContainers: 2, publishedPorts: 1 }, conflicts: [] } });
+    });
     render(<ComposeCenter request={request} language="de" authenticated onAnalysis={() => {}} />);
     fireEvent.change(screen.getByPlaceholderText(/services:/), { target: { value: "services:\n  web:\n    image: example/web:v1" } });
     fireEvent.click(screen.getByRole("button", { name: "Projekt analysieren" }));
