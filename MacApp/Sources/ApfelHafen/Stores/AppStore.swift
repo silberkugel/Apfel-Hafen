@@ -14,6 +14,7 @@ final class AppStore {
   var serverReachable = false
   var serviceUpdateRequired = false
   var volumeBasePath = ""
+  var backupBasePath = ""
   var networkAccess = false
   var isWorking = false
   var message = ""
@@ -22,6 +23,10 @@ final class AppStore {
   var dataDirectory: URL {
     fileManager.homeDirectoryForCurrentUser
       .appending(path: "Library/Application Support/Apfel-Hafen", directoryHint: .isDirectory)
+  }
+
+  var defaultBackupDirectory: URL {
+    dataDirectory.appending(path: "backups", directoryHint: .isDirectory)
   }
 
   var isConfigured: Bool { serviceState != .notInstalled && !volumeBasePath.isEmpty }
@@ -73,6 +78,18 @@ final class AppStore {
     }
   }
 
+  func chooseBackupPath() {
+    let panel = NSOpenPanel()
+    panel.title = "Globalen Ordner für Apfel-Hafen-Sicherungen auswählen"
+    panel.canChooseDirectories = true
+    panel.canChooseFiles = false
+    panel.canCreateDirectories = true
+    panel.allowsMultipleSelection = false
+    if panel.runModal() == .OK, let url = panel.url {
+      backupBasePath = url.path
+    }
+  }
+
   func configure() {
     isWorking = true
     errorMessage = ""
@@ -81,7 +98,16 @@ final class AppStore {
     do {
       guard containerCLIAvailable else { throw NSError(domain: "ApfelHafen", code: 1, userInfo: [NSLocalizedDescriptionKey: "Apples container-CLI wurde nicht gefunden."]) }
       guard !volumeBasePath.isEmpty else { throw NSError(domain: "ApfelHafen", code: 2, userInfo: [NSLocalizedDescriptionKey: "Bitte zuerst einen globalen Volume-Pfad auswählen."]) }
+      guard !backupBasePath.isEmpty else { throw NSError(domain: "ApfelHafen", code: 3, userInfo: [NSLocalizedDescriptionKey: "Bitte zuerst einen globalen Sicherungspfad auswählen."]) }
       try fileManager.createDirectory(atPath: volumeBasePath, withIntermediateDirectories: true)
+      if backupBasePath == defaultBackupDirectory.path {
+        try fileManager.createDirectory(atPath: backupBasePath, withIntermediateDirectories: true)
+      } else if !fileManager.fileExists(atPath: backupBasePath) {
+        throw NSError(domain: "ApfelHafen", code: 4, userInfo: [NSLocalizedDescriptionKey: "Das Sicherungsziel ist nicht verfügbar. Bitte das externe Laufwerk verbinden oder einen anderen Sicherungspfad wählen."])
+      }
+      let marker = URL(filePath: backupBasePath, directoryHint: .isDirectory).appending(path: ".apfel-hafen-backup-location")
+      try Data("Apfel-Hafen backup destination\n".utf8).write(to: marker, options: .atomic)
+      try fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: marker.path)
       try saveSettings()
       if !containerServiceRunning {
         _ = try ProcessRunner.run("/usr/local/bin/container", ["system", "start"], timeout: 30)
@@ -120,16 +146,18 @@ final class AppStore {
       if volumeBasePath.isEmpty {
         volumeBasePath = fileManager.homeDirectoryForCurrentUser.appending(path: "ContainerVolumes", directoryHint: .isDirectory).path
       }
+      if backupBasePath.isEmpty { backupBasePath = defaultBackupDirectory.path }
       return
     }
     volumeBasePath = settings.volumeBasePath
+    backupBasePath = settings.backupBasePath ?? defaultBackupDirectory.path
     networkAccess = settings.listenHost == "0.0.0.0"
   }
 
   private func saveSettings() throws {
     try fileManager.createDirectory(at: dataDirectory, withIntermediateDirectories: true)
     let settingsURL = dataDirectory.appending(path: "settings.json")
-    let settings = RuntimeSettings(volumeBasePath: volumeBasePath, listenHost: networkAccess ? "0.0.0.0" : "127.0.0.1")
+    let settings = RuntimeSettings(volumeBasePath: volumeBasePath, backupBasePath: backupBasePath, listenHost: networkAccess ? "0.0.0.0" : "127.0.0.1")
     let data = try JSONEncoder().encode(settings)
     try data.write(to: settingsURL, options: .atomic)
     try fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: settingsURL.path)

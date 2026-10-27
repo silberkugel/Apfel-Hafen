@@ -245,11 +245,16 @@ Protect the token like a password on the Hermes side and never commit it to the
 repository. MCP tool calls are written to the service log as structured audit
 entries without the token.
 
-Before replacing a container, Apfel-Hafen saves its configuration under
-`~/Library/Application Support/Apfel-Hafen/backups/<Containername>/` and
-verifies the new configuration with a temporary test container. Mounted host
+Before replacing a container, Apfel-Hafen saves its configuration under the
+configured global backup path and verifies the new configuration with a temporary test container. Mounted host
 directories remain intact. Data stored only in
 the container's writable root filesystem may be lost during replacement.
+
+The backup path can be selected independently from the global volume path and
+may reside on a permanently connected external drive. Apfel-Hafen marks the
+destination and refuses to create a backup with a clear error if the external
+drive is unavailable. Existing backups are not moved automatically when the
+path changes.
 
 ## Uninstallation
 
