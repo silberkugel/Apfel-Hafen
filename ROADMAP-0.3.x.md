@@ -34,7 +34,7 @@ Funktionen.
   Stack anzeigen.
 - Teilfehler und Wiederholungsversuche nachvollziehbar darstellen.
 
-## 0.3.5 – Betriebssicherheit und OpenTalk
+## 0.3.5 – Betriebssicherheit und OpenTalk (veröffentlicht)
 
 - Neustartregeln und Wiederanlauf nach einem Mac-Neustart absichern.
 - Sicherung, Aktualisierung und Rollback für Stack-Daten und Konfigurationen

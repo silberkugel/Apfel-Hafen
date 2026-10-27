@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createComposePlan, preflightComposePlan } from "../lib/compose-plan.mjs";
 import { composeRuntimeDraft } from "../lib/compose-analysis.mjs";
-import { recoveryActions, safeStackSummary, stackManifest } from "../lib/stack-safety.mjs";
+import { recoveryActions, safeStackSummary, stackManifest, verifyStackManifest } from "../lib/stack-safety.mjs";
 
 test("creates a deterministic read-only stack plan in dependency order", () => {
   const plan = createComposePlan(`
@@ -87,6 +87,9 @@ test("builds a confidential runtime manifest without exposing secrets in summari
   const manifest = stackManifest(plan, composeRuntimeDraft(source, options), { createdAt: "2026-10-27T00:00:00.000Z" });
   assert.equal(manifest.services[0].variables[0].value, "very-secret");
   assert.doesNotMatch(JSON.stringify(safeStackSummary(manifest)), /very-secret/);
+  assert.deepEqual(verifyStackManifest(manifest), { valid: true });
+  manifest.services[0].image = "changed/outside:latest";
+  assert.equal(verifyStackManifest(manifest).valid, false);
 });
 
 test("recovery respects desired state and restart rules", () => {
