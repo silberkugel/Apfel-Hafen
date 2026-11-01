@@ -22,7 +22,7 @@ import { buildImageArgs, builderActionArgs, imageActionArgs, parseImages, parseR
 import { cpuTotals, cpuUsage, parseContainerDiskUsage, parseContainerStats, parseContainerSystemStatus, parseMemoryPressure, parseSwapUsage, parseThermalState, parseVmStat, recommendations } from "./lib/technology-metrics.mjs";
 import { analyzeCompose, composeRuntimeDraft } from "./lib/compose-analysis.mjs";
 import { createComposePlan, preflightComposePlan } from "./lib/compose-plan.mjs";
-import { recoveryActions, safeStackSummary, stackManifest, verifyStackManifest } from "./lib/stack-safety.mjs";
+import { recoveryActions, restoreStopSource, safeStackSummary, stackManifest, stackRecovery, verifyStackManifest } from "./lib/stack-safety.mjs";
 
 const root = fileURLToPath(new URL(".", import.meta.url));
 const appPaths = await prepareApplicationData(root);
@@ -159,6 +159,8 @@ const englishMessages = new Map([
   ["Der Wochentag der Startzeit ist ungültig.", "The start time weekday is invalid."],
   ["Kalenderbasierte Startzeiten benötigen eine gültige Uhrzeit.", "Calendar-based start times require a valid time."],
   ["Dieser LaunchAgent enthält Startregeln, die nicht verlustfrei bearbeitet werden können.", "This LaunchAgent contains launch rules that cannot be edited without data loss."],
+  ["Ungültiges Stack-Format.", "Invalid stack format."],
+  ["Die Stack-Konfiguration wurde außerhalb von Apfel-Hafen verändert.", "The stack configuration was changed outside of Apfel-Hafen."],
 ]);
 
 function requestLanguage(req) {
@@ -444,12 +446,16 @@ async function listStacks() {
   const manifests = await Promise.all(names.filter((name) => name.endsWith(".json")).map((name) => readStack(name.slice(0, -5)).catch(() => null)));
   const { containers } = await currentState();
   const byName = new Map(containers.map((item) => [item.name, item]));
-  return manifests.filter(Boolean).map((manifest) => ({
-    ...safeStackSummary(manifest),
-    running: manifest.services.filter((service) => byName.get(service.containerName)?.status === "running").length,
-    total: manifest.services.length,
-    recovery: recoveryActions(manifest, containers),
-  }));
+  return manifests.filter(Boolean).map((manifest) => {
+    const { integrity, recovery } = stackRecovery(manifest, containers);
+    return {
+      ...safeStackSummary(manifest),
+      integrity,
+      running: manifest.services.filter((service) => byName.get(service.containerName)?.status === "running").length,
+      total: manifest.services.length,
+      recovery,
+    };
+  });
 }
 
 async function diagnoseStack(name) {
@@ -498,7 +504,14 @@ async function restoreLatestStackBackup(name) {
   const volumeTarget = join(settings.volumeBasePath, name);
   const rollbackPath = `${volumeTarget}.rollback-${randomBytes(6).toString("hex")}`;
   const hadVolumes = await stat(volumeTarget).then((item) => item.isDirectory()).catch(() => false);
-  await stackAction(name, "stop");
+  // The on-disk manifest may itself be tampered — exactly the case restore
+  // exists for — and stackAction refuses to act on such a manifest. Stop the
+  // stack from the on-disk manifest while it is trustworthy, otherwise from
+  // the verified backup manifest.
+  const stopSource = restoreStopSource(await readStack(name).catch(() => null), restored);
+  for (const service of [...stopSource.services].reverse()) await runContainer(["stop", service.containerName]).catch((error) => {
+    if (!/already|not running|running/i.test(error.message)) throw error;
+  });
   try {
     if (hadVolumes) await rename(volumeTarget, rollbackPath);
     if (existsSync(join(backupPath, "volumes"))) await cp(join(backupPath, "volumes"), volumeTarget, { recursive: true });
@@ -573,6 +586,10 @@ async function installStack(body) {
 
 async function stackAction(name, action) {
   const manifest = await readStack(name);
+  // Refuse to act on a manifest whose checksum no longer matches: a tampered
+  // file must not be able to steer which containers are started or stopped.
+  const integrity = verifyStackManifest(manifest);
+  if (!integrity.valid) throw new Error(integrity.reason);
   const order = action === "stop" ? [...manifest.services].reverse() : manifest.services;
   const command = action === "stop" ? "stop" : "start";
   for (const service of order) await runContainer([command, service.containerName]).catch((error) => {

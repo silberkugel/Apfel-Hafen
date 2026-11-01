@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createComposePlan, preflightComposePlan } from "../lib/compose-plan.mjs";
 import { composeRuntimeDraft } from "../lib/compose-analysis.mjs";
-import { recoveryActions, safeStackSummary, stackManifest, verifyStackManifest } from "../lib/stack-safety.mjs";
+import { recoveryActions, restoreStopSource, safeStackSummary, stackManifest, stackRecovery, verifyStackManifest } from "../lib/stack-safety.mjs";
 
 test("creates a deterministic read-only stack plan in dependency order", () => {
   const plan = createComposePlan(`
@@ -100,4 +100,29 @@ test("recovery respects desired state and restart rules", () => {
   assert.deepEqual(recoveryActions(manifest, []), [{ action: "start", containerName: "demo-db", service: "db" }]);
   manifest.desiredState = "stopped";
   assert.deepEqual(recoveryActions(manifest, []), []);
+});
+
+test("gates stack recovery on manifest integrity", () => {
+  const source = "services:\n  db:\n    image: example/db:1\n    restart: unless-stopped\n";
+  const options = { stackName: "demo" };
+  const plan = createComposePlan(source, options);
+  const manifest = stackManifest(plan, composeRuntimeDraft(source, options), { createdAt: "2026-10-27T00:00:00.000Z" });
+  assert.deepEqual(stackRecovery(manifest, []).integrity, { valid: true });
+  assert.deepEqual(stackRecovery(manifest, []).recovery, [{ action: "start", containerName: "demo-db", service: "db" }]);
+  manifest.services[0].image = "changed/outside:latest";
+  const tampered = stackRecovery(manifest, []);
+  assert.equal(tampered.integrity.valid, false);
+  assert.deepEqual(tampered.recovery, []);
+});
+
+test("restore stops from a trustworthy manifest and survives tampering", () => {
+  const source = "services:\n  db:\n    image: example/db:1\n    restart: unless-stopped\n";
+  const options = { stackName: "demo" };
+  const plan = createComposePlan(source, options);
+  const backup = stackManifest(plan, composeRuntimeDraft(source, options), { createdAt: "2026-10-27T00:00:00.000Z" });
+  const current = JSON.parse(JSON.stringify(backup));
+  assert.equal(restoreStopSource(current, backup), current);
+  assert.equal(restoreStopSource(null, backup), backup);
+  current.services[0].image = "changed/outside:latest";
+  assert.equal(restoreStopSource(current, backup), backup);
 });
