@@ -1141,6 +1141,19 @@ async function readBody(req) {
   return JSON.parse(raw || "{}");
 }
 
+// Unauthenticated callers may see a redacted overview (names + status) but never
+// the high-value recon: image references, host volume paths, published ports,
+// absolute program/plist/log paths, argument lists and PIDs.
+function redactContainers(containers) {
+  return containers.map(({ name, status }) => ({ name, status }));
+}
+
+function redactLaunchdServices(services) {
+  return services.map(({ id, label, kind, scope, loaded, state, running }) => ({
+    id, label, kind, scope, loaded, state, running,
+  }));
+}
+
 async function handleApi(req, res, pathname) {
   try {
     const snapshotMatch = pathname.match(/^\/api\/(?:system\/logs|containers\/([^/]+)\/logs)\/snapshot$/);
@@ -1160,8 +1173,12 @@ async function handleApi(req, res, pathname) {
         : { authenticated: false });
     }
     if (req.method === "GET" && pathname === "/api/status") {
-      const settings = await readSettings();
-      return json(res, 200, { version: appVersion, build: appBuild, protocol: "HTTPS", listenHost: settings.listenHost, certificateSource: activeTls.status.source, containerCli });
+      const status = { version: appVersion, build: appBuild, protocol: "HTTPS", certificateSource: activeTls.status.source };
+      if (currentSession(req)) {
+        status.listenHost = (await readSettings()).listenHost;
+        status.containerCli = containerCli;
+      }
+      return json(res, 200, status);
     }
     if (req.method === "GET" && pathname === "/api/technology/overview") {
       if (!currentSession(req)) return json(res, 401, { error: "Bitte als macOS-Administrator anmelden." });
@@ -1243,11 +1260,11 @@ async function handleApi(req, res, pathname) {
     }
     if (req.method === "GET" && pathname === "/api/containers") {
       const { containers } = await currentState();
-      return json(res, 200, { containers, refreshedAt: new Date().toISOString() });
+      return json(res, 200, { containers: currentSession(req) ? containers : redactContainers(containers), refreshedAt: new Date().toISOString() });
     }
     if (req.method === "GET" && pathname === "/api/services/launchd") {
       const services = await listLaunchdServices({ runProcess });
-      return json(res, 200, { services, refreshedAt: new Date().toISOString() });
+      return json(res, 200, { services: currentSession(req) ? services : redactLaunchdServices(services), refreshedAt: new Date().toISOString() });
     }
     if (req.method === "POST" && pathname === "/api/services/launchd") {
       if (!requireLocalOrigin(req)) return json(res, 403, { error: "LaunchD-Dienste dürfen nur von der lokalen Oberfläche erstellt werden." });
