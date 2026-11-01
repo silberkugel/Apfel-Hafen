@@ -1175,6 +1175,17 @@ function json(res, status, body, headers = {}) {
   res.end(JSON.stringify(body));
 }
 
+// Defense-in-depth headers on every response. The strict `script-src 'self'`
+// CSP is only possible because the former inline language-detection script was
+// moved to public/lang-init.js (a same-origin classic script).
+function applySecurityHeaders(res) {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("Referrer-Policy", "no-referrer");
+  res.setHeader("Content-Security-Policy",
+    "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'");
+}
+
 async function readBody(req) {
   let raw = "";
   const limit = String(req.url || "").startsWith("/api/compose/analyze") ? 2_200_000 : 524_288;
@@ -1661,6 +1672,8 @@ function serveStatic(req, res, pathname) {
 let activeTls = await loadTlsCertificate(appPaths.base);
 const server = createServer(activeTls, async (req, res) => {
   res.czLanguage = requestLanguage(req);
+  applySecurityHeaders(res);
+  if (activeTls.status.source === "custom") res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
   const url = new URL(req.url, `https://${req.headers.host || "127.0.0.1"}`);
   if (url.pathname === "/mcp") return handleMcp(req, res);
   if (url.pathname.startsWith("/api/")) return handleApi(req, res, url.pathname);
