@@ -128,6 +128,11 @@ test("rejects occupied ports and volume path traversal", () => {
   assert.throws(() => validateContainerDraft({ name: "web", image: "nginx", cpus: 2, memoryMb: 32 }, "/Volumes"), /Arbeitsspeicher/);
 });
 
+test("rejects image references that would be parsed as CLI flags", () => {
+  assert.throws(() => validateContainerDraft({ name: "web", image: "--cpus", cpus: 2, memoryMb: 1024 }, "/Volumes"), /Image-Referenz/);
+  assert.throws(() => validateContainerDraft({ name: "web", image: "-x", cpus: 2, memoryMb: 1024 }, "/Volumes"), /Image-Referenz/);
+});
+
 test("extracts and sorts local image references", () => {
   assert.deepEqual(parseImageNames(JSON.stringify([{ name: "nginx:latest" }, { reference: "alpine:latest" }, { names: ["nginx:latest", "busybox:1"] }])), ["alpine:latest", "busybox:1", "nginx:latest"]);
 });
