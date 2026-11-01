@@ -1,6 +1,6 @@
 import { createServer } from "node:https";
 import { spawn } from "node:child_process";
-import { createReadStream, existsSync } from "node:fs";
+import { createReadStream, existsSync, statSync } from "node:fs";
 import { chmod, cp, mkdtemp, mkdir, readFile, readdir, rename, rm, stat, statfs, writeFile } from "node:fs/promises";
 import { randomBytes } from "node:crypto";
 import { extname, isAbsolute, join, normalize, relative, resolve } from "node:path";
@@ -1643,10 +1643,19 @@ function serveStatic(req, res, pathname) {
   const dist = join(root, "dist");
   const relative = pathname === "/" ? "index.html" : pathname.slice(1);
   let file = normalize(join(dist, relative));
-  if (!file.startsWith(dist) || !existsSync(file)) file = join(dist, "index.html");
+  let stat;
+  try { stat = statSync(file); } catch { stat = null; }
+  // Only stream regular files. A directory (e.g. "/assets/") would otherwise
+  // raise EISDIR on the read stream and, unhandled, crash the server.
+  if (!file.startsWith(dist) || !stat?.isFile()) file = join(dist, "index.html");
   const types = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml" };
   res.writeHead(200, { "Content-Type": types[extname(file)] || "application/octet-stream" });
-  createReadStream(file).pipe(res);
+  const stream = createReadStream(file);
+  stream.on("error", () => {
+    if (!res.headersSent) res.writeHead(500, { "Content-Type": "text/plain; charset=utf-8" });
+    res.end();
+  });
+  stream.pipe(res);
 }
 
 let activeTls = await loadTlsCertificate(appPaths.base);
