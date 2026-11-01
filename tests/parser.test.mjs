@@ -133,6 +133,16 @@ test("rejects image references that would be parsed as CLI flags", () => {
   assert.throws(() => validateContainerDraft({ name: "web", image: "-x", cpus: 2, memoryMb: 1024 }, "/Volumes"), /Image-Referenz/);
 });
 
+test("rejects publish host addresses that would corrupt the --publish spec", () => {
+  const base = { cpus: 2, memoryMb: 1024, ports: [{ hostPort: 8080, containerPort: 80, protocol: "tcp" }] };
+  const withAddress = (hostAddress) => validateContainerSettings({ ...base, ports: [{ ...base.ports[0], hostAddress }] });
+  assert.throws(() => withAddress("--cpus"), /Host-Adresse/);
+  assert.throws(() => withAddress("1.2.3.4:5678"), /Host-Adresse/);
+  assert.throws(() => withAddress("bad address"), /Host-Adresse/);
+  assert.equal(withAddress("0.0.0.0").ports[0].hostAddress, "0.0.0.0");
+  assert.equal(validateContainerSettings(base).ports[0].hostAddress, "");
+});
+
 test("extracts and sorts local image references", () => {
   assert.deepEqual(parseImageNames(JSON.stringify([{ name: "nginx:latest" }, { reference: "alpine:latest" }, { names: ["nginx:latest", "busybox:1"] }])), ["alpine:latest", "busybox:1", "nginx:latest"]);
 });
