@@ -43,6 +43,23 @@ Funktionen.
   Besonderheiten des Originalprojekts bereitstellen.
 - Diagnose- und Wiederherstellungswege für Administratoren ergänzen.
 
+## 0.3.6 – Speicherorte und Speichertransparenz (in Entwicklung)
+
+- Den globalen Pfad für Apfel-Hafen-Sicherungen unabhängig vom Volume-Pfad
+  konfigurieren und damit auch ein dauerhaft verbundenes externes Laufwerk
+  verwenden können.
+- Vor jeder Sicherung prüfen, ob das ausgewählte Ziel tatsächlich verfügbar
+  ist, damit ein fehlendes externes Laufwerk nicht unbemerkt durch einen
+  lokalen Ordner ersetzt wird.
+- In der Technik-Zentrale den von Apple Container belegten Platz für
+  Snapshots sowie Images und Inhalte getrennt anzeigen.
+- Die vorhandenen, bestätigungspflichtigen Bereinigungsaktionen für
+  gestoppte Container, ungenutzte Images und nicht referenzierte Volumes
+  direkt bei diesen Messwerten anbieten.
+- Den internen Datenstamm von Apple Container nur anzeigen. Eine Verlagerung
+  auf externe Datenträger wird erst angeboten, wenn Apple Container diesen
+  Betriebsmodus zuverlässig unterstützt.
+
 Die Entwicklungszweige werden nacheinander vom jeweils abgeschlossenen Stand
-erstellt. Dadurch basieren 0.3.4 und 0.3.5 später auf allen Korrekturen ihrer
+erstellt. Dadurch basiert jede Unterversion auf allen Korrekturen ihrer
 Vorgängerversionen.

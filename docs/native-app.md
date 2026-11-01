@@ -33,6 +33,12 @@ Protokolle liegen unter `~/Library/Logs/Apfel-Hafen/`. Beim Wechsel von einer
 älteren ZIP-Installation übernimmt die App vorhandene Einstellungen,
 Zertifikate und Backups, bevor sie den alten LaunchAgent entfernt.
 
+In der App lassen sich der globale Volume-Pfad und der Pfad für neue
+Apfel-Hafen-Sicherungen getrennt festlegen. Der Sicherungspfad darf auf einem
+dauerhaft verbundenen externen Laufwerk liegen. Fehlt dieses Laufwerk, wird
+die Sicherung sicher abgebrochen; vorhandene Sicherungen werden bei einem
+Pfadwechsel nicht automatisch verschoben.
+
 ## Lokaler Build
 
 ```console

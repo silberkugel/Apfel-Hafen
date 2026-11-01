@@ -59,8 +59,14 @@
 .recommendations li.warning i { background: #c48b32; }.recommendations li.critical i { background: #b65347; }
 .all-clear { color: #39765e; font-size: 12px; }
 .cleanup-card > p:not(.eyebrow) { color: #69766f; font-size: 11px; line-height: 1.5; }
-.cleanup-card > div { display: grid; gap: 8px; margin-top: 14px; }
+.storage-breakdown { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 14px 0; }
+.storage-breakdown div { padding: 10px; background: #edf1ec; }
+.storage-breakdown dt { color: #69766f; font-size: 9px; text-transform: uppercase; }
+.storage-breakdown dd { margin: 5px 0 0; font: 600 14px ui-monospace, SFMono-Regular, monospace; }
+.cleanup-card > .cleanup-actions { display: grid; gap: 8px; margin-top: 14px; }
 .cleanup-card button { width: 100%; text-align: left; }
+.apple-storage-note { display: grid; gap: 5px; margin-top: 16px; padding: 11px; border-left: 3px solid #c48b32; background: #f4ead9; color: #715022; font-size: 10px; line-height: 1.45; }
+.apple-storage-note code { overflow-wrap: anywhere; font-size: 9px; }
 .technology-dialog-backdrop { position: fixed; z-index: 30; inset: 0; display: grid; place-items: center; padding: 20px; background: rgba(11, 22, 17, .48); backdrop-filter: blur(3px); }
 .technology-dialog { width: min(720px, 100%); max-height: 88vh; overflow: auto; padding: 25px; border: 1px solid #cbd0c9; background: #f8f7f3; box-shadow: 0 28px 90px rgba(0, 0, 0, .28); }
 .technology-dialog header h2 { margin: 2px 0 0; }
@@ -88,6 +94,8 @@
 
 [data-theme=dark] :is(.metric-card, .container-metrics-panel, .technology-side > section, .technology-dialog) { border-color: #43554a; background: #1d2b24; color: #e1e9e3; }
 [data-theme=dark] .container-summary { border-color: #496052; background: #263a2f; }
+[data-theme=dark] .storage-breakdown div { background: #263a2f; }
+[data-theme=dark] .apple-storage-note { background: #3a3021; color: #e3c892; }
 [data-theme=dark] :is(.container-summary dl div, .technology-section-heading, .metrics-table td, .container-detail-grid, .container-detail-grid > div, .limit-editor) { border-color: #43554a; }
 [data-theme=dark] :is(.metric-card > p, .technology-title small, .container-summary dd, .metrics-table th, .metrics-table td small, .technology-section-heading > span, .technology-image, .container-detail-grid dt, .container-detail-grid small, .cleanup-card > p:not(.eyebrow), .recommendations li) { color: #adbbb2; }
 [data-theme=dark] .technology-center button:not(.primary) { border-color: #43554a; background: #23362b; color: #e1e9e3; }

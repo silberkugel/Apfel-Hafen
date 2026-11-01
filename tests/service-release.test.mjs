@@ -137,22 +137,39 @@ test("existing user LaunchAgents can be edited through the protected API", async
   assert.match(client, /launchdDraftFromService/);
 });
 
-test("0.3.5 release metadata and published download names are aligned", async () => {
+test("0.3.6 development metadata and published download names are aligned", async () => {
   const [packageSource, readmeDe, readmeEn, publishedNotes, developmentNotes] = await Promise.all([
     readFile(new URL("../package.json", import.meta.url), "utf8"),
     readFile(new URL("../README-DE.md", import.meta.url), "utf8"),
     readFile(new URL("../README.md", import.meta.url), "utf8"),
-    readFile(new URL("../RELEASE-NOTES-0.3.4.md", import.meta.url), "utf8"),
     readFile(new URL("../RELEASE-NOTES-0.3.5.md", import.meta.url), "utf8"),
+    readFile(new URL("../RELEASE-NOTES-0.3.6.md", import.meta.url), "utf8"),
   ]);
 
-  assert.equal(JSON.parse(packageSource).version, "0.3.5");
+  assert.equal(JSON.parse(packageSource).version, "0.3.6");
   assert.match(readmeDe, /Apfel-Hafen-0\.3\.5-macos-arm64\.zip/);
   assert.match(readmeEn, /Apfel-Hafen-0\.3\.5-macos-arm64\.dmg/);
-  assert.match(publishedNotes, /^# Apfel-Hafen 0\.3\.4$/m);
+  assert.match(publishedNotes, /^# Apfel-Hafen 0\.3\.5$/m);
   assert.match(publishedNotes, /Veröffentlicht am 27\. Oktober 2026\./);
-  assert.match(developmentNotes, /^# Apfel-Hafen 0\.3\.5$/m);
-  assert.match(developmentNotes, /Veröffentlicht am 27\. Oktober 2026\./);
+  assert.match(developmentNotes, /^# Apfel-Hafen 0\.3\.6 \(in Entwicklung\)$/m);
+});
+
+test("0.3.6 supports protected external backup destinations", async () => {
+  const [server, client, store, settingsModel] = await Promise.all([
+    readFile(new URL("../server.mjs", import.meta.url), "utf8"),
+    readFile(new URL("../src/main.jsx", import.meta.url), "utf8"),
+    readFile(new URL("../MacApp/Sources/ApfelHafen/Stores/AppStore.swift", import.meta.url), "utf8"),
+    readFile(new URL("../MacApp/Sources/ApfelHafen/Models/AppStatus.swift", import.meta.url), "utf8"),
+  ]);
+  assert.match(server, /backupBasePath: appPaths\.backups/);
+  assert.match(server, /\.apfel-hafen-backup-location/);
+  assert.match(server, /requireBackupBasePath/);
+  assert.match(server, /select-backup-path/);
+  assert.match(client, /backupBasePath/);
+  assert.match(client, /selectBackupPath/);
+  assert.match(store, /chooseBackupPath/);
+  assert.match(store, /Das Sicherungsziel ist nicht verfügbar/);
+  assert.match(settingsModel, /var backupBasePath: String\?/);
 });
 
 test("container creation offers OpenCode images with version and release date", async () => {

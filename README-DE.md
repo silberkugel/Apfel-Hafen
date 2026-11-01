@@ -252,13 +252,19 @@ Der Token muss auf der Hermes-Seite wie ein Passwort geschützt und darf nicht
 in das Repository eingecheckt werden. MCP-Werkzeugaufrufe werden ohne Token im
 Dienstprotokoll als strukturierte Audit-Einträge erfasst.
 
-Vor dem Ersetzen eines Containers legt Apfel-Hafen unter
-`~/Library/Application Support/Apfel-Hafen/backups/<Containername>/` eine
-Sicherung seiner Konfiguration an und prüft die
+Vor dem Ersetzen eines Containers legt Apfel-Hafen im eingestellten globalen
+Sicherungspfad eine Sicherung seiner Konfiguration an und prüft die
 neue Konfiguration zunächst mit einem Probe-Container. Eingebundene
 Host-Verzeichnisse bleiben erhalten. Daten, die ausschließlich im
 beschreibbaren Root-Dateisystem des Containers liegen, können beim Ersetzen
 verloren gehen.
+
+Der Sicherungspfad kann in den Systemeinstellungen unabhängig vom globalen
+Volume-Pfad gewählt werden und darf auf einer dauerhaft verbundenen externen
+Festplatte liegen. Apfel-Hafen kennzeichnet das Ziel und verweigert eine
+Sicherung mit klarer Fehlermeldung, wenn das externe Laufwerk fehlt. Bereits
+vorhandene Sicherungen werden beim Ändern des Pfades nicht automatisch
+verschoben.
 
 ## Deinstallation
 

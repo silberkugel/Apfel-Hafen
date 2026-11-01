@@ -35,7 +35,7 @@ struct ContentView: View {
       VStack(alignment: .leading, spacing: 18) {
         Text("Der Hafenmeister prüft den Liegeplatz und aktiviert anschließend den Hintergrunddienst. Die Benutzeroberfläche läuft weiterhin in deinem normalen Browser.")
           .foregroundStyle(.secondary)
-        pathPicker
+        storagePathPickers
         Toggle("Zugriff aus dem lokalen Netzwerk erlauben (0.0.0.0)", isOn: $store.networkAccess)
         if store.networkAccess {
           Label("Verwende für andere Geräte ein vertrauenswürdiges Zertifikat und eine restriktive Firewall-Regel.", systemImage: "exclamationmark.shield")
@@ -46,7 +46,7 @@ struct ContentView: View {
           Button("Apfel-Hafen einrichten") { store.configure() }
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
-            .disabled(store.isWorking || !store.containerCLIAvailable || store.volumeBasePath.isEmpty)
+            .disabled(store.isWorking || !store.containerCLIAvailable || store.volumeBasePath.isEmpty || store.backupBasePath.isEmpty)
         }
       }.padding(8)
     }
@@ -65,7 +65,7 @@ struct ContentView: View {
           Spacer()
           Button("Aktualisieren") { store.refresh() }
         }
-        pathPicker
+        storagePathPickers
         Toggle("Zugriff aus dem lokalen Netzwerk erlauben (0.0.0.0)", isOn: $store.networkAccess)
         HStack {
           Button("Änderungen speichern") { store.configure() }
@@ -81,15 +81,26 @@ struct ContentView: View {
     }
   }
 
-  private var pathPicker: some View {
-    VStack(alignment: .leading, spacing: 7) {
-      Text("Globaler Pfad für Container-Volumes").font(.headline)
-      HStack {
-        TextField("Volume-Pfad", text: $store.volumeBasePath)
-        Button("Auswählen …") { store.chooseVolumePath() }
+  private var storagePathPickers: some View {
+    VStack(alignment: .leading, spacing: 18) {
+      VStack(alignment: .leading, spacing: 7) {
+        Text("Globaler Pfad für Container-Volumes").font(.headline)
+        HStack {
+          TextField("Volume-Pfad", text: $store.volumeBasePath)
+          Button("Auswählen …") { store.chooseVolumePath() }
+        }
+        Text("Dauerhafte Containerdaten sollten ausschließlich unter diesem Pfad liegen.")
+          .font(.caption).foregroundStyle(.secondary)
       }
-      Text("Dauerhafte Containerdaten sollten ausschließlich unter diesem Pfad liegen.")
-        .font(.caption).foregroundStyle(.secondary)
+      VStack(alignment: .leading, spacing: 7) {
+        Text("Globaler Pfad für Sicherungen").font(.headline)
+        HStack {
+          TextField("Sicherungspfad", text: $store.backupBasePath)
+          Button("Auswählen …") { store.chooseBackupPath() }
+        }
+        Text("Neue Konfigurations- und Stack-Sicherungen können auf einer dauerhaft verbundenen externen Festplatte liegen.")
+          .font(.caption).foregroundStyle(.secondary)
+      }
     }
   }
 
