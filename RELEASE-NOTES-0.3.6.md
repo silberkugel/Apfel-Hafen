@@ -1,4 +1,6 @@
-# Apfel-Hafen 0.3.6 (in Entwicklung)
+# Apfel-Hafen 0.3.6
+
+Veröffentlicht am 2. November 2026.
 
 ## Speicherorte
 
@@ -27,3 +29,25 @@
   als Apfel-Hafen-Sicherungsziel erkennbar ist.
 - Ein nicht eingehängtes externes Laufwerk führt zu einer verständlichen
   Fehlermeldung statt zu einem unerwarteten lokalen Ersatzordner.
+
+## Sicherheits-Härtung
+
+- Stack-Manifeste werden vor Start, Stopp, Wiederanlauf und
+  Wiederherstellung gegen ihre Prüfsumme geprüft. Eine außerhalb von
+  Apfel-Hafen veränderte Konfiguration wird angezeigt und kann keine
+  Containeraktionen mehr steuern.
+- Jede Antwort trägt Sicherheits-Header (Content-Security-Policy mit
+  striktem script-src, X-Frame-Options, X-Content-Type-Options,
+  Referrer-Policy); bei eigenem Zertifikat zusätzlich HSTS.
+- Nicht angemeldete Anfragen erhalten nur noch eine redigierte Übersicht
+  von Containern und LaunchD-Diensten. Image-Referenzen, Host-Pfade,
+  Ports und PIDs bleiben der angemeldeten Oberfläche vorbehalten.
+- Die Anmelde-Ratebegrenzung zählt nur fehlgeschlagene Versuche pro
+  Adresse und Konto und wird bei erfolgreicher Anmeldung zurückgesetzt.
+  Ein gültiges Nicht-Admin-Konto erhält dieselbe Fehlermeldung wie ein
+  unbekanntes Konto.
+- Image-Referenzen und Host-Adressen, die als CLI-Optionen oder als
+  fehlerhafte --publish-Werte interpretiert werden könnten, werden
+  abgelehnt.
+- Der statische Dateihandler stürzt nicht mehr bei Anfragen auf
+  Verzeichnisse ab.

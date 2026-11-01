@@ -43,7 +43,7 @@ Funktionen.
   Besonderheiten des Originalprojekts bereitstellen.
 - Diagnose- und Wiederherstellungswege für Administratoren ergänzen.
 
-## 0.3.6 – Speicherorte und Speichertransparenz (in Entwicklung)
+## 0.3.6 – Speicherorte und Speichertransparenz (veröffentlicht)
 
 - Den globalen Pfad für Apfel-Hafen-Sicherungen unabhängig vom Volume-Pfad
   konfigurieren und damit auch ein dauerhaft verbundenes externes Laufwerk
