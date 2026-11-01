@@ -354,14 +354,39 @@ function requireLocalOrigin(req) {
   return requestMatchesOrigin(req.headers.origin, req.headers.host);
 }
 
-function allowLogin(req) {
-  const key = req.socket.remoteAddress || "local";
+// Login rate limiting. Keyed by source address AND username so one account
+// cannot exhaust the limit for another (local DoS), and only failed attempts
+// count: a successful login clears the bucket, so normal log-in/log-out cycles
+// never self-lock. Stale entries are pruned opportunistically to bound memory.
+const loginWindowMs = 5 * 60 * 1000;
+const loginMaxFailures = 5;
+
+function loginRateLimitKey(req, username) {
+  return `${req.socket.remoteAddress || "local"}|${username}`;
+}
+
+function recentLoginFailures(key, now) {
+  return (loginAttempts.get(key) || []).filter((time) => now - time < loginWindowMs);
+}
+
+function loginAttemptAllowed(key) {
+  return recentLoginFailures(key, Date.now()).length < loginMaxFailures;
+}
+
+function recordLoginFailure(key) {
   const now = Date.now();
-  const recent = (loginAttempts.get(key) || []).filter((time) => now - time < 5 * 60 * 1000);
-  if (recent.length >= 5) return false;
-  recent.push(now);
-  loginAttempts.set(key, recent);
-  return true;
+  loginAttempts.set(key, [...recentLoginFailures(key, now), now]);
+  if (loginAttempts.size > 1000) {
+    for (const [storedKey, times] of loginAttempts) {
+      const fresh = times.filter((time) => now - time < loginWindowMs);
+      if (fresh.length) loginAttempts.set(storedKey, fresh);
+      else loginAttempts.delete(storedKey);
+    }
+  }
+}
+
+function clearLoginFailures(key) {
+  loginAttempts.delete(key);
 }
 
 async function authenticateAdministrator(username, password) {
@@ -374,7 +399,9 @@ async function authenticateAdministrator(username, password) {
   if (authentication.code !== 0) throw new Error("Benutzername oder Passwort ist nicht korrekt.");
 
   const membership = await runProcess("/usr/bin/dsmemberutil", ["checkmembership", "-U", username, "-G", "admin"]);
-  if (membership.code !== 0 || !/is a member/i.test(membership.stdout)) throw new Error("Nur macOS-Administratoren dürfen sich anmelden.");
+  // Same generic message as a PAM failure, so a valid non-admin account cannot
+  // be used as a password-verification oracle (user enumeration).
+  if (membership.code !== 0 || !/is a member/i.test(membership.stdout)) throw new Error("Benutzername oder Passwort ist nicht korrekt.");
 
   const userRecord = await runProcess("/usr/bin/dscl", [".", "-read", `/Users/${username}`, "RealName"]);
   const displayName = userRecord.code === 0
@@ -1223,11 +1250,20 @@ async function handleApi(req, res, pathname) {
     }
     if (req.method === "POST" && pathname === "/api/auth/login") {
       if (!requireLocalOrigin(req)) return json(res, 403, { error: "Anmeldung ist nur von der lokalen Oberfläche erlaubt." });
-      if (!allowLogin(req)) return json(res, 429, { error: "Zu viele Anmeldeversuche. Bitte fünf Minuten warten." });
       const body = await readBody(req);
+      const username = String(body.username || "");
       const password = String(body.password || "");
       body.password = "";
-      const administrator = await authenticateAdministrator(String(body.username || ""), password);
+      const rateKey = loginRateLimitKey(req, username);
+      if (!loginAttemptAllowed(rateKey)) return json(res, 429, { error: "Zu viele Anmeldeversuche. Bitte fünf Minuten warten." });
+      let administrator;
+      try {
+        administrator = await authenticateAdministrator(username, password);
+      } catch (error) {
+        recordLoginFailure(rateKey);
+        throw error;
+      }
+      clearLoginFailures(rateKey);
       const token = randomBytes(32).toString("base64url");
       const session = { ...administrator, expiresAt: Date.now() + sessionDurationMs };
       sessions.set(token, session);
