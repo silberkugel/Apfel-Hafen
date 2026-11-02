@@ -23,8 +23,11 @@ import { cpuTotals, cpuUsage, parseContainerDiskUsage, parseContainerStats, pars
 import { analyzeCompose, composeRuntimeDraft } from "./lib/compose-analysis.mjs";
 import { createComposePlan, preflightComposePlan } from "./lib/compose-plan.mjs";
 import { recoveryActions, restoreStopSource, safeStackSummary, stackManifest, stackRecovery, verifyStackManifest } from "./lib/stack-safety.mjs";
+import { acquireServiceLock, installServiceLogContext, releaseServiceLock, serviceRuntimePaths } from "./lib/service-runtime.mjs";
 
 const root = fileURLToPath(new URL(".", import.meta.url));
+const logContext = installServiceLogContext();
+const runtimePaths = serviceRuntimePaths();
 const appPaths = await prepareApplicationData(root);
 const appVersion = JSON.parse(await readFile(join(root, "package.json"), "utf8")).version;
 const appBuild = (await readFile(join(root, "BUILD-ID.txt"), "utf8").catch(() => "development")).trim() || "development";
@@ -48,7 +51,7 @@ let previousHostCpu = null;
 let previousContainerStats = new Map();
 const technologySnapshotCache = { value: null, createdAt: 0, pending: null };
 const sessionDurationMs = 30 * 60 * 1000;
-const mcpTokenPath = join(appPaths.base, "mcp-token");
+const mcpTokenPath = runtimePaths.mcpToken;
 const mcpToken = await (async () => {
   if (process.env.APFEL_HAFEN_MCP_TOKEN) return String(process.env.APFEL_HAFEN_MCP_TOKEN);
   try {
@@ -71,6 +74,25 @@ const managedByApp = process.env.APFEL_HAFEN_MANAGED_BY_APP === "1";
 const bundledNode = join(root, "runtime", "node");
 const expectedNode = existsSync(bundledNode) ? bundledNode : process.execPath;
 const expectedServer = join(root, "server.mjs");
+const serviceLock = await acquireServiceLock(runtimePaths.lock, logContext);
+if (!serviceLock.acquired) {
+  const ownerPid = Number(serviceLock.owner?.pid);
+  console.log(`Apfel-Hafen läuft bereits${ownerPid > 0 ? ` (PID ${ownerPid})` : ""}. Es wird keine zweite Instanz gestartet.`);
+  process.exit(0);
+}
+let serviceLockReleased = false;
+function releaseInstanceLock() {
+  if (serviceLockReleased) return;
+  serviceLockReleased = true;
+  releaseServiceLock(serviceLock);
+}
+process.once("exit", releaseInstanceLock);
+for (const signal of ["SIGINT", "SIGTERM"]) {
+  process.once(signal, () => {
+    releaseInstanceLock();
+    process.exit(0);
+  });
+}
 const settingsPath = appPaths.settings;
 const backupLocationMarker = ".apfel-hafen-backup-location";
 const defaultSettings = { volumeBasePath: join(homedir(), "ContainerVolumes"), backupBasePath: appPaths.backups, listenHost: localListenHost };
@@ -1782,7 +1804,23 @@ let rebindTimer;
 
 function listen(host) {
   activeListenHost = normalizeListenHost(host);
-  server.listen(port, activeListenHost, () => console.log(`Apfel-Hafen: https://${activeListenHost}:${port}`));
+  return new Promise((resolveListen, rejectListen) => {
+    const onError = (error) => rejectListen(error);
+    server.once("error", onError);
+    server.listen(port, activeListenHost, () => {
+      server.off("error", onError);
+      console.log(`Apfel-Hafen: https://${activeListenHost}:${port}`);
+      resolveListen();
+    });
+  });
+}
+
+function reportListenError(error) {
+  if (error?.code === "EADDRINUSE") {
+    console.error(`Apfel-Hafen kann nicht starten: Port ${port} auf ${activeListenHost} ist bereits belegt. Prüfe, ob Apfel-Hafen bereits läuft, oder beende den Prozess, der diesen Port verwendet.`);
+    return;
+  }
+  console.error(`Apfel-Hafen kann nicht starten: ${error?.message || error}`);
 }
 
 function scheduleListenHost(host) {
@@ -1790,12 +1828,18 @@ function scheduleListenHost(host) {
   if (nextHost === activeListenHost) return;
   clearTimeout(rebindTimer);
   rebindTimer = setTimeout(() => {
-    server.close(() => listen(nextHost));
+    server.close(() => listen(nextHost).catch(reportListenError));
     server.closeIdleConnections?.();
   }, 300);
 }
 
-listen((await readSettings()).listenHost);
-setTimeout(() => recoverManagedStacks(), 1500);
+try {
+  await listen((await readSettings()).listenHost);
+  setTimeout(() => recoverManagedStacks(), 1500);
+} catch (error) {
+  reportListenError(error);
+  releaseInstanceLock();
+  process.exitCode = 1;
+}
 
 if (!validMcpToken(mcpToken)) console.log(`Apfel-Hafen: Remote MCP is disabled; set APFEL_HAFEN_MCP_TOKEN or create ${mcpTokenPath}.`);

@@ -11,6 +11,22 @@ let logDirectory = FileManager.default.homeDirectoryForCurrentUser
   .appending(path: "Library/Logs/Apfel-Hafen", directoryHint: .isDirectory)
 
 try? FileManager.default.createDirectory(at: logDirectory, withIntermediateDirectories: true)
+func rotateLog(_ url: URL, generations: Int = 3) {
+  let fileManager = FileManager.default
+  try? fileManager.removeItem(at: URL(fileURLWithPath: "\(url.path).\(generations)"))
+  if generations > 1 {
+    for generation in stride(from: generations - 1, through: 1, by: -1) {
+      let source = URL(fileURLWithPath: "\(url.path).\(generation)")
+      let destination = URL(fileURLWithPath: "\(url.path).\(generation + 1)")
+      if fileManager.fileExists(atPath: source.path) { try? fileManager.moveItem(at: source, to: destination) }
+    }
+  }
+  if fileManager.fileExists(atPath: url.path) {
+    try? fileManager.moveItem(at: url, to: URL(fileURLWithPath: "\(url.path).1"))
+  }
+}
+rotateLog(logDirectory.appending(path: "service.log"))
+rotateLog(logDirectory.appending(path: "service-error.log"))
 let standardOutput = Darwin.open(logDirectory.appending(path: "service.log").path, O_WRONLY | O_CREAT | O_APPEND, 0o600)
 let standardError = Darwin.open(logDirectory.appending(path: "service-error.log").path, O_WRONLY | O_CREAT | O_APPEND, 0o600)
 if standardOutput >= 0 { dup2(standardOutput, STDOUT_FILENO); close(standardOutput) }
