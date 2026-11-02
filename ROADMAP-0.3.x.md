@@ -60,6 +60,41 @@ Funktionen.
   auf externe Datenträger wird erst angeboten, wenn Apple Container diesen
   Betriebsmodus zuverlässig unterstützt.
 
+## 0.3.7 – Speichersicherheit und Ressourcen-Budget (in Entwicklung)
+
+Hintergrund: Auf einem Mac mit 16 GB Arbeitsspeicher haben mehrere aktive
+Container zusammen mehr RAM benötigt, als physisch vorhanden ist. Apples
+`container`-CLI lehnt solche Anfragen weder pro Container noch in Summe ab;
+macOS gleicht den Mehrbedarf über den Swap aus, was die Leistung deutlich
+verschlechtert und Container zum Abbruch bringen kann. Apfel-Hafen muss den
+Gesamtbedarf deshalb selbst steuern.
+
+- Ein konfigurierbares Gesamtspeicher-Budget für alle laufenden Container
+  und die Builder-VM; Standard ist 60 % des installierten Arbeitsspeichers,
+  damit macOS und weitere Anwendungen weiterhin ausreichend Platz haben.
+- Verbindlicher Vorab-Check vor dem Start einzelner Container und kompletter
+  Stacks: Bereits verpfändeter Speicher plus neue Anfrage übersteigt das
+  Budget, wird der Start blockiert und Budget, verpfändeter Speicher,
+  Anfrage und Differenz werden verständlich erklärt.
+- Die Technik-Zentrale zeigt das Budget, den verpfändeten und den tatsächlich
+  genutzten Speicher; Container, die dauerhaft mehr als 85 % ihres Limits
+  verbrauchen, werden vor dem nächsten OOM-Abbruch gewarnt.
+- Kritischer Speicherdruck löst in der Betriebskonsole eine Benachrichtigung
+  mit konkreten Handlungsoptionen aus (Top-Verbraucher stoppen, Budget oder
+  Limits anpassen).
+- Das Verhalten wird in Release-Notes und README (DE/EN) dokumentiert.
+
+Akzeptanzkriterien:
+
+- Auf einem 16-GB-Mac lassen sich über Apfel-Hafen weder einzelne Container
+  noch Stacks starten, die das Budget überschreiten.
+- Jeder blockierte Start zeigt Budget, verpfändeten Speicher, Anfrage und
+  Differenz sowie mindestens zwei konkrete Optionen.
+- Verhalten innerhalb des Budgets bleibt unverändert; alle bestehenden Tests
+  bleiben grün.
+- Neue Unit- und Integrationstests für Budget, Vorab-Check und
+  Druckbehandlung; keine neuen Endpunkte ohne Authentifizierung.
+
 Die Entwicklungszweige werden nacheinander vom jeweils abgeschlossenen Stand
 erstellt. Dadurch basiert jede Unterversion auf allen Korrekturen ihrer
 Vorgängerversionen.
