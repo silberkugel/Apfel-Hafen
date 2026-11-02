@@ -60,7 +60,36 @@ Funktionen.
   auf externe Datenträger wird erst angeboten, wenn Apple Container diesen
   Betriebsmodus zuverlässig unterstützt.
 
-## 0.3.7 – Speichersicherheit und Ressourcen-Budget (in Entwicklung)
+## 0.3.7 – Betriebsrobustheit (veröffentlicht)
+
+### Betriebsrobustheit beim Start
+
+Beobachtete Probleme: Doppelte Instanzen bei unterschiedlichen Startwegen
+(Start-Command, LaunchAgent, App), ungefangener Node-Absturz bei belegtem
+Port (EADDRINUSE), Logs ohne Zeitstempel oder Zusammenhäng, und der
+MCP-Token wurde aus dem übersteuerbaren Datenverzeichnis statt aus dem
+tatsächlichen Benutzerverzeichnis geladen.
+
+- Einzelne Instanz: Unabhängig vom Startweg (Start-Command, LaunchAgent,
+  native App, `service-control.mjs start`) läuft genau ein Serverprozess.
+  Der Start prüft Port und Lock; läuft bereits eine Instanz, beendet sich
+  der neue Start sauber mit verständlicher Meldung statt einen zweiten
+  Prozess zu starten.
+- EADDRINUSE: Der Server behandelt einen belegten Port als erwartbaren
+  Fehlerfall: klare Meldung (Port, bereits laufende Instanz, Lösungsweg)
+  in Log und Standardausgabe, sauberes Beenden ohne ungefangene
+  Ausnahme. `service-control.mjs start` ist idempotent und meldet
+  „läuft bereits“.
+- Log-Format und Rotation: Beide Logs (`service.log` und
+  `service-error.log`) bekommen beim Start eine Kopfzeile mit ISO-Zeitstempel,
+  PID und eindeutiger Start-ID; jede Logzeile trägt ISO-Zeitstempel und PID.
+  Vor dem Start werden vorhandene Logs rotiert (älteste wird verworfen).
+- MCP-Token-Pfad: Der Tokenpfad wird aus dem tatsächlichen
+  Benutzerverzeichnis des ausführenden Nutzers abgeleitet, nicht aus dem
+  übersteuerbaren Datenverzeichnis (`APFEL_HAFEN_DATA_DIR`). Bestehende
+  Tokens im Benutzerverzeichnis bleiben gültig.
+
+## 0.3.8 – Speichersicherheit und Ressourcen-Budget (in Entwicklung)
 
 Hintergrund: Auf einem Mac mit 16 GB Arbeitsspeicher haben mehrere aktive
 Container zusammen mehr RAM benötigt, als physisch vorhanden ist. Apples

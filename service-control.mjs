@@ -1,17 +1,19 @@
 import { spawnSync } from "node:child_process";
-import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
+import { request } from "node:https";
+import { chmod, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
-import { homedir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { launchAgentPlist } from "./lib/autostart.mjs";
+import { actualUserHome } from "./lib/service-runtime.mjs";
 
 const root = fileURLToPath(new URL(".", import.meta.url));
+const userHome = actualUserHome();
 const label = "de.apfel-hafen.service";
 const domain = `gui/${process.getuid()}`;
 const target = `${domain}/${label}`;
-const launchAgentPath = join(homedir(), "Library", "LaunchAgents", `${label}.plist`);
-const logDir = join(homedir(), "Library", "Logs", "Apfel-Hafen");
+const launchAgentPath = join(userHome, "Library", "LaunchAgents", `${label}.plist`);
+const logDir = join(userHome, "Library", "Logs", "Apfel-Hafen");
 const bundledNode = join(root, "runtime", "node");
 const nodePath = existsSync(bundledNode) ? bundledNode : process.execPath;
 const serverPath = join(root, "server.mjs");
@@ -26,11 +28,50 @@ function launchctl(args, { allowFailure = false } = {}) {
 
 const wait = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
+async function serverState() {
+  return new Promise((resolveState) => {
+    const probe = request({ hostname: "127.0.0.1", port: 4173, path: "/api/status", method: "GET", rejectUnauthorized: false, timeout: 750 }, (response) => {
+      let body = "";
+      response.setEncoding("utf8");
+      response.on("data", (chunk) => { body += chunk; });
+      response.on("end", () => {
+        try {
+          const status = JSON.parse(body);
+          resolveState(response.statusCode === 200 && status?.version ? "running" : "occupied");
+        } catch { resolveState("occupied"); }
+      });
+    });
+    probe.on("timeout", () => probe.destroy());
+    probe.on("error", (error) => resolveState(error.code === "ECONNREFUSED" ? "free" : "occupied"));
+    probe.end();
+  });
+}
+
+async function rotateLog(path, generations = 3) {
+  await rm(`${path}.${generations}`, { force: true });
+  for (let generation = generations - 1; generation >= 1; generation -= 1) {
+    await rename(`${path}.${generation}`, `${path}.${generation + 1}`).catch((error) => {
+      if (error.code !== "ENOENT") throw error;
+    });
+  }
+  await rename(path, `${path}.1`).catch((error) => {
+    if (error.code !== "ENOENT") throw error;
+  });
+}
+
+async function rotateServiceLogs() {
+  await mkdir(logDir, { recursive: true });
+  await Promise.all([
+    rotateLog(join(logDir, "service.log")),
+    rotateLog(join(logDir, "service-error.log")),
+  ]);
+}
+
 async function install() {
   if (!existsSync(serverPath)) throw new Error(`Server fehlt: ${serverPath}`);
   if (!existsSync(join(root, "dist", "index.html"))) throw new Error("Die gebaute Weboberfläche fehlt.");
 
-  await mkdir(join(homedir(), "Library", "LaunchAgents"), { recursive: true });
+  await mkdir(join(userHome, "Library", "LaunchAgents"), { recursive: true });
   await mkdir(logDir, { recursive: true });
   const plist = launchAgentPlist({
     label,
@@ -45,7 +86,21 @@ async function install() {
 }
 
 async function start() {
+  const loadedJob = launchctl(["print", target], { allowFailure: true });
+  if (loadedJob.status === 0 && /^\s*state = running\s*$/m.test(loadedJob.stdout)) {
+    process.stdout.write("Apfel-Hafen läuft bereits als Hintergrunddienst.\n");
+    return;
+  }
+  const state = await serverState();
+  if (state === "running") {
+    process.stdout.write("Apfel-Hafen läuft bereits. Es wird keine zweite Instanz gestartet.\n");
+    return;
+  }
+  if (state === "occupied") {
+    throw new Error("Apfel-Hafen kann nicht starten: Port 4173 ist bereits durch einen anderen Prozess belegt.");
+  }
   await install();
+  await rotateServiceLogs();
 
   // Reloading also replaces a service definition left behind by an older
   // installation directory. A missing loaded job is harmless here.
