@@ -12,6 +12,7 @@ import { buildCreateArgs, editableContainerSettings, imageDigestFromInspect, pin
 import { buildNewContainerArgs, parseImageNames, validateContainerDraft, validateContainerSettings } from "./lib/container-create.mjs";
 import { dockerHubSearchInput, shouldPullImage, updateCheckResult } from "./lib/image-policy.mjs";
 import { imageProjectPath, imageVersion, latestStableTag, openCodeImageResult, openCodeSearchInput, parseComposeOpenCodeImages } from "./lib/opencode-source.mjs";
+import { findNewerVersion, isVersionTag, latestVersionTag, listRegistryTags, parseImageReference, registryManifestDigest, withTag } from "./lib/registry-tags.mjs";
 import { localListenHost, normalizeListenHost, requestMatchesOrigin } from "./lib/network-settings.mjs";
 import { installCustomCertificate, loadTlsCertificate, removeCustomCertificate } from "./lib/tls-certificates.mjs";
 import { prepareApplicationData } from "./lib/app-paths.mjs";
@@ -1118,17 +1119,62 @@ async function checkUpdate(name) {
     await runContainer(["image", "pull", "--progress", "plain", selected.image], 600_000);
   }
   const newDigest = imageDigestFromInspect(await runContainer(["image", "inspect", selected.image]));
-  const check = updateCheckResult(selected.image, selected.digest, newDigest);
+  let check = updateCheckResult(selected.image, selected.digest, newDigest);
+  let image = selected.image;
+  let digest = newDigest;
+
+  if (!check.available) {
+    const versionUpdate = await findVersionTagUpdate(selected.image);
+    if (versionUpdate) {
+      const candidateDigest = await registryManifestDigest(versionUpdate.image);
+      if (candidateDigest && candidateDigest !== selected.digest) {
+        image = versionUpdate.image;
+        digest = candidateDigest;
+        check = { available: true, message: `Image-Update ist verfügbar: ${selected.image} → ${image}.` };
+      }
+    }
+  }
+
   const result = {
     ...check,
     oldDigest: selected.digest,
-    newDigest,
+    newDigest: digest,
     image: selected.image,
+    newImage: image,
     summary: replacementSummary(record),
     checkedAt: Date.now(),
   };
   checkedUpdates.set(name, result);
   return result;
+}
+
+/**
+ * Findet für gepinnte Versions-Tags (z. B. v0.13.2) oder Digest-Referenzen
+ * eine neuere Veröffentlichung in der Registry. Liefert null, wenn die
+ * Registry nicht unterstützt wird, nicht erreichbar ist oder keine
+ * neuere Version existiert.
+ */
+async function findVersionTagUpdate(image) {
+  const parsed = parseImageReference(image);
+  if (!parsed) return null;
+  let tags;
+  try {
+    tags = await listRegistryTags(image);
+  } catch {
+    return null;
+  }
+  if (!tags?.length) return null;
+
+  let candidateTag = null;
+  if (parsed.digest) {
+    candidateTag = latestVersionTag(tags);
+  } else if (isVersionTag(parsed.tag)) {
+    candidateTag = findNewerVersion(parsed.tag, tags);
+  }
+  if (!candidateTag) return null;
+  const candidateImage = withTag(image, candidateTag);
+  if (!candidateImage || candidateImage === image) return null;
+  return { image: candidateImage, tag: candidateTag };
 }
 
 async function saveBackup(name, record, update) {
@@ -1155,10 +1201,14 @@ async function replaceContainer(name) {
 
   const wasRunning = selected.status === "running";
   const backupPath = await saveBackup(name, record, update);
-  const newArgs = buildCreateArgs(record, update.image);
+  const replacementImage = update.newImage || update.image;
+  if (replacementImage !== update.image && shouldPullImage(replacementImage)) {
+    await runContainer(["image", "pull", "--progress", "plain", replacementImage], 600_000);
+  }
+  const newArgs = buildCreateArgs(record, replacementImage);
   const rollbackArgs = buildCreateArgs(record, pinnedImage(update.image, update.oldDigest));
   const preflightName = `${name}-update-test-${Date.now().toString(36)}`;
-  const preflightArgs = buildCreateArgs(record, update.image, preflightName);
+  const preflightArgs = buildCreateArgs(record, replacementImage, preflightName);
   let oldDeleted = false;
 
   try {
