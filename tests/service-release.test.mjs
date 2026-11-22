@@ -151,7 +151,7 @@ test("existing user LaunchAgents can be edited through the protected API", async
   assert.match(client, /launchdDraftFromService/);
 });
 
-test("0.3.8 development metadata keeps published 0.3.7 downloads aligned", async () => {
+test("0.3.8 release metadata publishes the aligned downloads", async () => {
   const [packageSource, readmeDe, readmeEn, publishedNotes, releaseNotes] = await Promise.all([
     readFile(new URL("../package.json", import.meta.url), "utf8"),
     readFile(new URL("../README-DE.md", import.meta.url), "utf8"),
@@ -161,11 +161,13 @@ test("0.3.8 development metadata keeps published 0.3.7 downloads aligned", async
   ]);
 
   assert.equal(JSON.parse(packageSource).version, "0.3.8");
-  assert.match(readmeDe, /Apfel-Hafen-0\.3\.7-macos-arm64\.zip/);
-  assert.match(readmeEn, /Apfel-Hafen-0\.3\.7-macos-arm64\.dmg/);
+  assert.match(readmeDe, /Apfel-Hafen-0\.3\.8-macos-arm64\.zip/);
+  assert.match(readmeEn, /Apfel-Hafen-0\.3\.8-macos-arm64\.dmg/);
   assert.match(publishedNotes, /^# Apfel-Hafen 0\.3\.7$/m);
   assert.match(publishedNotes, /Veröffentlicht am 2\. November 2026\./);
-  assert.match(releaseNotes, /^# Apfel-Hafen 0\.3\.8 \(in Entwicklung\)$/m);
+  assert.match(releaseNotes, /^# Apfel-Hafen 0\.3\.8$/m);
+  assert.match(releaseNotes, /Veröffentlicht am 22\. November 2026\./);
+  assert.doesNotMatch(releaseNotes, /\(in Entwicklung\)/);
 });
 
 test("0.3.6 supports protected external backup destinations", async () => {
