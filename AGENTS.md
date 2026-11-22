@@ -38,6 +38,8 @@ German-first UI and commit/PR culture; keep user-facing strings German
 
 ## Security rules (hard-won, do not regress)
 
+- RAM budget: every start path (single container lifecycle/MCP, stack start/install, builder VM) is gated by `assertMemoryBudgetForStart` via `lib/memory-budget.mjs` before touching `container start`. Budget lives in `settings.json` `memoryBudgetMb` (0 = auto 60 % of RAM). Keep the gate on any new start flow.
+
 - HTTPS only; no plain HTTP. TLS material lives in `~/Library/Application Support/Apfel-Hafen/tls/`, keys user-readable-only.
 - Auth: PAM against local admin account, nothing stored. Unauthenticated reads are status-only and rate-limited (login oracle fix PR #9); validate hosts/image refs before shelling out to `container` (`lib/image-policy.mjs`, PRs #11/#14).
 - MCP endpoint `/mcp` is disabled unless `APFEL_HAFEN_MCP_TOKEN` (≥32 chars) or `~/Library/Application Support/Apfel-Hafen/mcp-token` exists; token path derives from the real user home, **not** `APFEL_HAFEN_DATA_DIR`. MCP exposes only the 7 read/start/stop container tools — never add shell/delete/host-change tools there.
