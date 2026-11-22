@@ -169,6 +169,19 @@ macOS-Administratorkonto an. Danach stehen folgende Funktionen bereit:
   oder wieder auf das automatisch erzeugte Zertifikat zurückschalten
 - LaunchAgent installieren oder aktualisieren und den Autostart ändern
 
+### Arbeitsspeicher-Budget
+
+Apples `container`-CLI akzeptiert Startanfragen über den physischen Arbeitsspeicher
+des Mac hinaus; macOS swapt dann und Container können abbrechen. Apfel-Hafen
+erzwingt deshalb ein konfigurierbares Arbeitsspeicher-Budget für alle laufenden
+Container und die Builder-VM. Standard sind 60 % des eingebauten Arbeitsspeichers;
+der Wert kann in der **Administration** geändert werden (`0` stellt den automatischen
+Standard wieder her). Starts, die das Budget übersteigen — einzelne Container,
+Stacks oder die Builder-VM — werden vorher blockiert und nennen Budget, verpfändeten
+Speicher, Anfrage, Differenz und konkrete Handlungsoptionen. Die Technik-Zentrale
+zeigt Budget, verpfändeten und tatsächlich genutzten Speicher und warnt bei
+Containern, die dauerhaft mehr als 85 % ihres Limits verbrauchen.
+
 Die OpenCode-Suche akzeptiert Suchbegriffe, Projektpfade und vollständige
 Projekt-URLs. Bei einem versionierten Setup-Projekt wie
 `https://gitlab.opencode.de/opentalk/ot-setup` erkennt Apfel-Hafen die darin

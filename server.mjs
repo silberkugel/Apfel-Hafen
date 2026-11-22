@@ -21,6 +21,7 @@ import { OperationStore } from "./lib/operation-store.mjs";
 import { currentMcpProtocolVersion, dispatchMcpPayload, mcpBearerAuthorized, validMcpToken, validateModernMcpHeaders } from "./lib/mcp-server.mjs";
 import { buildImageArgs, builderActionArgs, imageActionArgs, parseImages, parseRegistryList, registryAction, safeLogOptions, validateImageReference } from "./lib/container-operations.mjs";
 import { cpuTotals, cpuUsage, parseContainerDiskUsage, parseContainerStats, parseContainerSystemStatus, parseMemoryPressure, parseSwapUsage, parseThermalState, parseVmStat, recommendations } from "./lib/technology-metrics.mjs";
+import { assertStartAllowed, budgetRecommendations, committedMemoryBytes, containerMemoryBytes, parseBuilderMemory, resolveMemoryBudget, trackHighUsage } from "./lib/memory-budget.mjs";
 import { analyzeCompose, composeRuntimeDraft } from "./lib/compose-analysis.mjs";
 import { createComposePlan, preflightComposePlan } from "./lib/compose-plan.mjs";
 import { recoveryActions, restoreStopSource, safeStackSummary, stackManifest, stackRecovery, verifyStackManifest } from "./lib/stack-safety.mjs";
@@ -42,6 +43,8 @@ const containerCliCandidates = ["/usr/local/bin/container", "/opt/homebrew/bin/c
 const containerCli = containerCliCandidates.find((candidate) => existsSync(candidate)) || "/usr/local/bin/container";
 const pamHelper = join(root, "auth", "pam-auth");
 const checkedUpdates = new Map();
+const memoryHighUsageStreaks = new Map();
+let builderMemoryCache = { bytes: 0, at: 0 };
 const imageSearchCache = new Map();
 const sessions = new Map();
 const loginAttempts = new Map();
@@ -96,7 +99,7 @@ for (const signal of ["SIGINT", "SIGTERM"]) {
 }
 const settingsPath = appPaths.settings;
 const backupLocationMarker = ".apfel-hafen-backup-location";
-const defaultSettings = { volumeBasePath: join(homedir(), "ContainerVolumes"), backupBasePath: appPaths.backups, listenHost: localListenHost };
+const defaultSettings = { volumeBasePath: join(homedir(), "ContainerVolumes"), backupBasePath: appPaths.backups, listenHost: localListenHost, memoryBudgetMb: 0 };
 const englishMessages = new Map([
   ["Die Administrationseinstellungen konnten nicht gelesen werden.", "Administration settings could not be read."],
   ["Bitte einen gültigen absoluten Volume-Pfad angeben.", "Enter a valid absolute volume path."],
@@ -218,13 +221,15 @@ function englishMessage(message) {
     .replace(/^Änderung und automatische Wiederherstellung sind fehlgeschlagen\. Die Sicherung liegt unter (.+)\. Ursache: /, "The change and automatic recovery failed. The backup is stored at $1. Cause: ")
     .replace(/^Der Autostart konnte nicht aktiviert werden\./, "Automatic startup could not be enabled.")
     .replace(/^Der Autostart konnte nicht deaktiviert werden\./, "Automatic startup could not be disabled.")
+    .replace(/^Arbeitsspeicher-Budget überschritten: Budget (.+), verpfändet (.+), angefragt (.+); es fehlen (.+)\. Optionen: (.+)\.$/, "Memory budget exceeded: budget $1, committed $2, requested $3, short by $4. Options: $5.")
+    .replace(/^Ungültiges Arbeitsspeicher-Budget\. /, "Invalid memory budget. ")
     .replace(/ Prüfe mit „container system status“, ob der Apple-Containerdienst für diesen Benutzer läuft\.$/, " Check with ‘container system status’ whether the Apple container service is running for this user.");
 }
 
 async function readSettings() {
   try {
     const stored = JSON.parse(await readFile(settingsPath, "utf8"));
-    return { ...defaultSettings, ...stored, listenHost: normalizeListenHost(stored.listenHost) };
+    return { ...defaultSettings, ...stored, listenHost: normalizeListenHost(stored.listenHost), memoryBudgetMb: Number.isInteger(Number(stored.memoryBudgetMb)) && Number(stored.memoryBudgetMb) > 0 ? Number(stored.memoryBudgetMb) : 0 };
   } catch (error) {
     if (error.code === "ENOENT") return { ...defaultSettings };
     throw new Error("Die Administrationseinstellungen konnten nicht gelesen werden.");
@@ -647,6 +652,7 @@ async function installStack(body) {
   if (!preflight.ready) throw new Error("Die Vorabprüfung meldet Konflikte. Der Stack wurde nicht verändert.");
   const manifest = stackManifest(plan, composeRuntimeDraft(body.compose, options));
   const settings = await readSettings();
+  await assertMemoryBudgetForStart(manifest.services.reduce((sum, service) => sum + (Number(service.memoryMb) || 0) * 1024 ** 2, 0));
   const created = [];
   const networks = [...new Set(manifest.services.map((service) => service.network).filter(Boolean))];
   try {
@@ -691,6 +697,11 @@ async function stackAction(name, action) {
   if (!integrity.valid) throw new Error(integrity.reason);
   const order = action === "stop" ? [...manifest.services].reverse() : manifest.services;
   const command = action === "stop" ? "stop" : "start";
+  if (action === "start") {
+    const { containers } = await currentState();
+    const toStart = manifest.services.filter((service) => !containers.some((item) => item.name === service.containerName && item.status === "running"));
+    await assertMemoryBudgetForStart(toStart.reduce((sum, service) => sum + (Number(service.memoryMb) || 0) * 1024 ** 2, 0));
+  }
   for (const service of order) await runContainer([command, service.containerName]).catch((error) => {
     if (!/already|not running|running/i.test(error.message)) throw error;
   });
@@ -747,6 +758,7 @@ async function technologySnapshot() {
 
   const memory = parseMemoryPressure(pressureOutput, parseVmStat(vmStatOutput, totalmem()));
   memory.swapUsedBytes = parseSwapUsage(swapOutput);
+  const [budgetSettings, builderBytes] = await Promise.all([readSettings(), builderCommittedBytes()]);
   const diskTotalBytes = Number(diskInfo.blocks) * Number(diskInfo.bsize);
   const diskFreeBytes = Number(diskInfo.bavail) * Number(diskInfo.bsize);
   const disk = {
@@ -811,7 +823,17 @@ async function technologySnapshot() {
       diskError: containerDiskResult.ok ? "" : containerDiskResult.error,
     },
   };
-  snapshot.recommendations = recommendations(snapshot);
+  const memoryBudget = resolveMemoryBudget({ memoryBudgetMb: budgetSettings.memoryBudgetMb, totalBytes: totalmem() });
+  snapshot.memoryBudget = {
+    budgetBytes: memoryBudget.budgetBytes,
+    automaticBudgetBytes: memoryBudget.automaticBudgetBytes,
+    usesCustomBudget: memoryBudget.usesCustomBudget,
+    builderCommittedBytes: builderBytes,
+    committedBytes: committedMemoryBytes({ containers: items, builderBytes }),
+    usedBytes: items.reduce((sum, item) => sum + (item.memoryUsageBytes || 0), 0),
+    highUsage: trackHighUsage(items, memoryHighUsageStreaks),
+  };
+  snapshot.recommendations = [...recommendations(snapshot), ...budgetRecommendations(snapshot.memoryBudget)];
   return snapshot;
 }
 
@@ -1296,11 +1318,33 @@ async function updateContainerSettings(name, input) {
   }
 }
 
+async function builderCommittedBytes() {
+  if (Date.now() - builderMemoryCache.at < 5_000) return builderMemoryCache.bytes;
+  const output = await runContainer(["builder", "status"], 20_000).catch(() => "");
+  builderMemoryCache = { bytes: parseBuilderMemory(output), at: Date.now() };
+  return builderMemoryCache.bytes;
+}
+
+// Apple's CLI accepts start requests beyond the physical memory silently and
+// macOS pays with swap thrash and OOM kills — so Apfel-Hafen gates starts
+// against its own committed-memory budget before running anything.
+async function assertMemoryBudgetForStart(requestedBytes, excludeNames = []) {
+  if (!Number.isFinite(requestedBytes) || requestedBytes <= 0) return;
+  const [settings, { containers }, builderBytes] = await Promise.all([readSettings(), currentState(), builderCommittedBytes()]);
+  const budget = resolveMemoryBudget({ memoryBudgetMb: settings.memoryBudgetMb, totalBytes: totalmem() });
+  const committedBytes = committedMemoryBytes({ containers, builderBytes, excludeNames });
+  assertStartAllowed({ budgetBytes: budget.budgetBytes, committedBytes, requestedBytes });
+}
+
 async function executeLifecycle(action, selected) {
   invalidateTechnologySnapshot();
-  if (action === "start") return runContainer(["start", selected.name]);
+  if (action === "start") {
+    await assertMemoryBudgetForStart(containerMemoryBytes(selected), [selected.name]);
+    return runContainer(["start", selected.name]);
+  }
   if (action === "stop") return runContainer(["stop", selected.name]);
   if (action === "restart") {
+    await assertMemoryBudgetForStart(containerMemoryBytes(selected), [selected.name]);
     if (selected.status === "running") await runContainer(["stop", selected.name]);
     await runContainer(["start", selected.name]);
     return "Container wurde neu gestartet.";
@@ -1505,12 +1549,23 @@ async function handleApi(req, res, pathname) {
     if (pathname === "/api/administration/settings" && ["GET", "POST"].includes(req.method)) {
       const session = currentSession(req);
       if (!session) return json(res, 401, { error: "Bitte als macOS-Administrator anmelden." });
-      if (req.method === "GET") return json(res, 200, { ...(await readSettings()), ...(await autostartStatus()) });
+      if (req.method === "GET") {
+        const currentSettings = await readSettings();
+        const budget = resolveMemoryBudget({ memoryBudgetMb: currentSettings.memoryBudgetMb, totalBytes: totalmem() });
+        return json(res, 200, { ...currentSettings, totalMemoryBytes: totalmem(), automaticBudgetMb: Math.floor(budget.automaticBudgetBytes / 1024 ** 2), ...(await autostartStatus()) });
+      }
       if (!requireLocalOrigin(req)) return json(res, 403, { error: "Einstellungen dürfen nur von der lokalen Oberfläche geändert werden." });
       const body = await readBody(req);
       let settings = await readSettings();
       if (body.volumeBasePath !== undefined) settings = await setVolumeBasePath(body.volumeBasePath);
       if (body.backupBasePath !== undefined) settings = await setBackupBasePath(body.backupBasePath);
+      if (body.memoryBudgetMb !== undefined) {
+        const totalMb = Math.floor(totalmem() / 1024 ** 2);
+        const memoryBudgetMb = Number(body.memoryBudgetMb);
+        if (!Number.isInteger(memoryBudgetMb) || memoryBudgetMb < 0 || memoryBudgetMb > totalMb) return json(res, 400, { error: `Ungültiges Arbeitsspeicher-Budget. Bitte eine ganze Zahl zwischen 0 und ${totalMb} MB angeben; 0 nutzt automatisch 60 % des Arbeitsspeichers.` });
+        settings = { ...settings, memoryBudgetMb };
+        await saveSettings(settings);
+      }
       let changedListenHost = null;
       if (body.listenHost !== undefined) {
         if (!["127.0.0.1", "0.0.0.0"].includes(body.listenHost)) return json(res, 400, { error: "Ungültige Einstellung für den Netzwerkzugriff." });
@@ -1627,7 +1682,10 @@ async function handleApi(req, res, pathname) {
       if (!currentSession(req)) return json(res, 401, { error: "Bitte als macOS-Administrator anmelden." });
       const body = await readBody(req);
       const action = String(body.action || "");
-      return json(res, 202, { operation: await operationStore.start(`builder.${action}`, `builder: ${action}`, builderActionArgs(action, body)) });
+      const args = builderActionArgs(action, body);
+      builderMemoryCache = { bytes: 0, at: 0 };
+      if (action === "start") await assertMemoryBudgetForStart(Number(body.memoryMb) * 1024 ** 2);
+      return json(res, 202, { operation: await operationStore.start(`builder.${action}`, `builder: ${action}`, args) });
     }
     const imageInspectMatch = pathname.match(/^\/api\/images\/inspect$/);
     if (req.method === "POST" && imageInspectMatch) {
