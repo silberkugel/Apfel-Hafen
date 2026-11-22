@@ -89,7 +89,7 @@ tatsächlichen Benutzerverzeichnis geladen.
   übersteuerbaren Datenverzeichnis (`APFEL_HAFEN_DATA_DIR`). Bestehende
   Tokens im Benutzerverzeichnis bleiben gültig.
 
-## 0.3.8 – Speichersicherheit und Ressourcen-Budget (in Entwicklung)
+## 0.3.8 – Speichersicherheit und Ressourcen-Budget (veröffentlicht)
 
 Hintergrund: Auf einem Mac mit 16 GB Arbeitsspeicher haben mehrere aktive
 Container zusammen mehr RAM benötigt, als physisch vorhanden ist. Apples
@@ -113,7 +113,7 @@ Gesamtbedarf deshalb selbst steuern.
   Limits anpassen).
 - Das Verhalten wird in Release-Notes und README (DE/EN) dokumentiert.
 
-Akzeptanzkriterien:
+Akzeptanzkriterien (alle erfüllt):
 
 - Auf einem 16-GB-Mac lassen sich über Apfel-Hafen weder einzelne Container
   noch Stacks starten, die das Budget überschreiten.
