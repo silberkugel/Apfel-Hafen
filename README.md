@@ -166,6 +166,19 @@ The following functions are then available:
   switch back to the automatically generated certificate
 - install or update the LaunchAgent and change its automatic-start status
 
+### Memory budget
+
+Apple's `container` CLI accepts start requests beyond the physical memory of
+the Mac; macOS then swaps and containers may be killed. Apfel-Hafen therefore
+enforces a configurable memory budget covering all running containers and the
+builder VM. The default is 60 % of installed RAM and can be changed under
+**Administration** (`0` restores the automatic default). Starts that would
+exceed the budget — single containers, stacks, or the builder VM — are blocked
+before they happen, showing budget, committed memory, request, shortfall, and
+concrete options. The Technology Center displays budget, committed, and actual
+usage, and warns about containers that persistently use more than 85 % of
+their limit.
+
 The OpenCode search accepts search terms, project paths, and complete project
 URLs. For a versioned setup project such as
 `https://gitlab.opencode.de/opentalk/ot-setup`, Apfel-Hafen discovers the
