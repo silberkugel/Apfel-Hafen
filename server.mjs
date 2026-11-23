@@ -3,7 +3,7 @@ import { spawn } from "node:child_process";
 import { createReadStream, existsSync, statSync } from "node:fs";
 import { chmod, cp, mkdtemp, mkdir, readFile, readdir, rename, rm, stat, statfs, writeFile } from "node:fs/promises";
 import { randomBytes } from "node:crypto";
-import { extname, isAbsolute, join, normalize, relative, resolve } from "node:path";
+import { extname, isAbsolute, join, normalize, relative, resolve, sep } from "node:path";
 import { arch, cpus, homedir, loadavg, release, totalmem, uptime } from "node:os";
 import { fileURLToPath } from "node:url";
 import { disabledFromLaunchctl, launchAgentPlist, programFromLaunchctl } from "./lib/autostart.mjs";
@@ -26,6 +26,7 @@ import { analyzeCompose, composeRuntimeDraft } from "./lib/compose-analysis.mjs"
 import { createComposePlan, preflightComposePlan } from "./lib/compose-plan.mjs";
 import { recoveryActions, restoreStopSource, safeStackSummary, stackManifest, stackRecovery, verifyStackManifest } from "./lib/stack-safety.mjs";
 import { acquireServiceLock, installServiceLogContext, releaseServiceLock, serviceRuntimePaths } from "./lib/service-runtime.mjs";
+import { createGuestReadCache, createGuestReadGuard, guestReadPaths, guestReadRateLimited } from "./lib/guest-read-guard.mjs";
 
 const root = fileURLToPath(new URL(".", import.meta.url));
 const logContext = installServiceLogContext();
@@ -54,6 +55,11 @@ let systemStoppedByUser = false;
 let previousHostCpu = null;
 let previousContainerStats = new Map();
 const technologySnapshotCache = { value: null, createdAt: 0, pending: null };
+// Guest reads spawn CLI/launchctl subprocesses per request; a per-address
+// rate limit bounds the fan-out and a short cache serves repeated polls.
+const guestReadGuard = createGuestReadGuard({ windowMs: 60_000, maxRequests: 30 });
+const guestContainersCache = createGuestReadCache({ ttlMs: 5_000 });
+const guestLaunchdCache = createGuestReadCache({ ttlMs: 15_000 });
 const sessionDurationMs = 30 * 60 * 1000;
 const mcpTokenPath = runtimePaths.mcpToken;
 const mcpToken = await (async () => {
@@ -146,6 +152,7 @@ const englishMessages = new Map([
   ["Anfrage ist zu groß.", "The request is too large."],
   ["Anmeldung ist nur von der lokalen Oberfläche erlaubt.", "Sign-in is allowed only from the local interface."],
   ["Zu viele Anmeldeversuche. Bitte fünf Minuten warten.", "Too many sign-in attempts. Wait five minutes."],
+  ["Zu viele Anfragen. Bitte kurz warten.", "Too many requests. Wait a moment."],
   ["Abmeldung ist nur von der lokalen Oberfläche erlaubt.", "Sign-out is allowed only from the local interface."],
   ["Bitte als macOS-Administrator anmelden.", "Sign in as a macOS administrator."],
   ["Einstellungen dürfen nur von der lokalen Oberfläche geändert werden.", "Settings may be changed only from the local interface."],
@@ -708,6 +715,7 @@ async function stackAction(name, action) {
   manifest.desiredState = action === "stop" ? "stopped" : "running";
   manifest.lastActionAt = new Date().toISOString();
   await writeStack(manifest);
+  invalidateTechnologySnapshot();
   return { message: `Stack „${name}“ wurde ${action === "stop" ? "gestoppt" : "gestartet"}.`, stack: safeStackSummary(manifest) };
 }
 
@@ -853,6 +861,8 @@ async function cachedTechnologySnapshot() {
 
 function invalidateTechnologySnapshot() {
   technologySnapshotCache.createdAt = 0;
+  // Admin changes must be visible to guest polls immediately, not TTL-late.
+  guestContainersCache.invalidate("containers");
 }
 
 function mcpContainerName(args) {
@@ -1106,6 +1116,7 @@ async function createContainer(input) {
   } catch (error) {
     throw new Error(`Der Container konnte nicht gestartet werden. Er bleibt für die Fehlersuche erhalten; öffne beim Container „Startprotokoll anzeigen“. Ursache: ${error.message}`);
   }
+  invalidateTechnologySnapshot();
   return { message: draft.start ? "Container wurde erstellt und gestartet." : "Container wurde erstellt." };
 }
 
@@ -1127,6 +1138,7 @@ async function deleteContainer(name, input) {
     for (const source of removableSources) await rm(source, { recursive: true, force: true });
   }
   checkedUpdates.delete(name);
+  invalidateTechnologySnapshot();
   return { message: input?.deleteVolumes ? "Container und zugehörige Volume-Daten wurden gelöscht." : "Container wurde gelöscht." };
 }
 
@@ -1398,6 +1410,9 @@ function redactLaunchdServices(services) {
 
 async function handleApi(req, res, pathname) {
   try {
+    if (req.method === "GET" && !currentSession(req) && guestReadPaths.has(pathname) && guestReadRateLimited(guestReadGuard, req)) {
+      return json(res, 429, { error: "Zu viele Anfragen. Bitte kurz warten." }, { "Retry-After": "60" });
+    }
     const snapshotMatch = pathname.match(/^\/api\/(?:system\/logs|containers\/([^/]+)\/logs)\/snapshot$/);
     if (req.method === "GET" && snapshotMatch) {
       if (!currentSession(req)) return json(res, 401, { error: "Bitte als macOS-Administrator anmelden." });
@@ -1510,11 +1525,13 @@ async function handleApi(req, res, pathname) {
       return json(res, 200, { authenticated: false }, { "Set-Cookie": `${sessionCookieName}=; ${sessionCookieAttributes}; Max-Age=0` });
     }
     if (req.method === "GET" && pathname === "/api/containers") {
-      const { containers } = await currentState();
+      // Admin reads stay uncached; guests get the redacted view from a
+      // short-lived shared cache so repeated polls reuse one CLI call.
+      const { containers } = currentSession(req) ? await currentState() : await guestContainersCache.read("containers", currentState);
       return json(res, 200, { containers: currentSession(req) ? containers : redactContainers(containers), refreshedAt: new Date().toISOString() });
     }
     if (req.method === "GET" && pathname === "/api/services/launchd") {
-      const services = await listLaunchdServices({ runProcess });
+      const services = currentSession(req) ? await listLaunchdServices({ runProcess }) : await guestLaunchdCache.read("launchd", () => listLaunchdServices({ runProcess }));
       return json(res, 200, { services: currentSession(req) ? services : redactLaunchdServices(services), refreshedAt: new Date().toISOString() });
     }
     if (req.method === "POST" && pathname === "/api/services/launchd") {
@@ -1884,7 +1901,9 @@ function serveStatic(req, res, pathname) {
   try { stat = statSync(file); } catch { stat = null; }
   // Only stream regular files. A directory (e.g. "/assets/") would otherwise
   // raise EISDIR on the read stream and, unhandled, crash the server.
-  if (!file.startsWith(dist) || !stat?.isFile()) file = join(dist, "index.html");
+  // Separate-boundary prefix, so a sibling directory like "dist-secret" can
+  // never satisfy the check even if normalization ever lets a ".." through.
+  if (!file.startsWith(dist + sep) || !stat?.isFile()) file = join(dist, "index.html");
   const types = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml" };
   res.writeHead(200, { "Content-Type": types[extname(file)] || "application/octet-stream" });
   const stream = createReadStream(file);
