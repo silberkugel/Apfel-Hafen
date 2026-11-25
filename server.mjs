@@ -455,6 +455,30 @@ function loginAttemptAllowed(key) {
   return recentLoginFailures(key, Date.now()).length < loginMaxFailures;
 }
 
+// Coarse second gate keyed by address alone: the per-user bucket alone lets a
+// caller on the LAN (listenHost 0.0.0.0) vary the username and spawn pam-auth
+// subprocesses without bound. Every attempt that reaches PAM counts here.
+const loginAddressWindowMs = 5 * 60 * 1000;
+const loginAddressMaxAttempts = 30;
+const loginAttemptsByAddress = new Map();
+
+function loginAddressAllowed(address, now = Date.now()) {
+  return (loginAttemptsByAddress.get(address) || []).filter((time) => now - time < loginAddressWindowMs).length < loginAddressMaxAttempts;
+}
+
+function recordLoginAttempt(address, now = Date.now()) {
+  const fresh = (loginAttemptsByAddress.get(address) || []).filter((time) => now - time < loginAddressWindowMs);
+  fresh.push(now);
+  loginAttemptsByAddress.set(address, fresh);
+  if (loginAttemptsByAddress.size > 1000) {
+    for (const [stored, times] of loginAttemptsByAddress) {
+      const kept = times.filter((time) => now - time < loginAddressWindowMs);
+      if (kept.length) loginAttemptsByAddress.set(stored, kept);
+      else loginAttemptsByAddress.delete(stored);
+    }
+  }
+}
+
 function recordLoginFailure(key) {
   const now = Date.now();
   loginAttempts.set(key, [...recentLoginFailures(key, now), now]);
@@ -689,9 +713,11 @@ async function installStack(body) {
       }
     }
     await writeStack(manifest);
+    invalidateTechnologySnapshot();
     return { message: `Stack „${manifest.stackName}“ wurde mit ${manifest.services.length} Diensten gestartet.`, stack: safeStackSummary(manifest) };
   } catch (error) {
     for (const name of created.reverse()) await runContainer(["delete", "--force", name]).catch(() => {});
+    invalidateTechnologySnapshot();
     throw new Error(`Der Stack wurde nicht vollständig gestartet; neu angelegte Container wurden zurückgerollt. Ursache: ${error.message}`);
   }
 }
@@ -1387,7 +1413,10 @@ function applySecurityHeaders(res) {
 
 async function readBody(req) {
   let raw = "";
-  const limit = String(req.url || "").startsWith("/api/compose/analyze") ? 2_200_000 : 524_288;
+  // Logins only ever carry small credentials; keep the unauthenticated body
+  // budget tiny so pre-auth floods cannot pin megabytes in parsed JSON.
+  const url = String(req.url || "");
+  const limit = url.startsWith("/api/compose/analyze") ? 2_200_000 : url === "/api/auth/login" ? 16_384 : 524_288;
   for await (const chunk of req) {
     raw += chunk;
     if (raw.length > limit) throw new Error("Anfrage ist zu groß.");
@@ -1502,7 +1531,9 @@ async function handleApi(req, res, pathname) {
       const password = String(body.password || "");
       body.password = "";
       const rateKey = loginRateLimitKey(req, username);
-      if (!loginAttemptAllowed(rateKey)) return json(res, 429, { error: "Zu viele Anmeldeversuche. Bitte fünf Minuten warten." });
+      const address = req.socket.remoteAddress || "local";
+      if (!loginAttemptAllowed(rateKey) || !loginAddressAllowed(address)) return json(res, 429, { error: "Zu viele Anmeldeversuche. Bitte fünf Minuten warten." });
+      recordLoginAttempt(address);
       let administrator;
       try {
         administrator = await authenticateAdministrator(username, password);
@@ -1538,7 +1569,9 @@ async function handleApi(req, res, pathname) {
       if (!requireLocalOrigin(req)) return json(res, 403, { error: "LaunchD-Dienste dürfen nur von der lokalen Oberfläche erstellt werden." });
       const session = currentSession(req);
       if (!session) return json(res, 401, { error: "Bitte als macOS-Administrator anmelden." });
-      return json(res, 201, { ok: true, ...(await createLaunchdService(await readBody(req), runProcess)) });
+      const createdService = await createLaunchdService(await readBody(req), runProcess);
+      guestLaunchdCache.invalidate("launchd");
+      return json(res, 201, { ok: true, ...createdService });
     }
     const launchdEditMatch = pathname.match(/^\/api\/services\/launchd\/([^/]+)$/);
     if (req.method === "PUT" && launchdEditMatch) {
@@ -1548,7 +1581,9 @@ async function handleApi(req, res, pathname) {
       const services = await listLaunchdServices({ runProcess });
       const service = findLaunchdService(services, decodeURIComponent(launchdEditMatch[1]));
       if (!service) return json(res, 404, { error: "LaunchD-Dienst ist nicht mehr vorhanden. Bitte Liste aktualisieren." });
-      return json(res, 200, { ok: true, ...(await updateLaunchdService(service, await readBody(req), runProcess)) });
+      const updatedService = await updateLaunchdService(service, await readBody(req), runProcess);
+      guestLaunchdCache.invalidate("launchd");
+      return json(res, 200, { ok: true, ...updatedService });
     }
     const launchdMatch = pathname.match(/^\/api\/services\/launchd\/([^/]+)\/(start|stop|restart|cleanup)$/);
     if (req.method === "POST" && launchdMatch) {
@@ -1559,8 +1594,13 @@ async function handleApi(req, res, pathname) {
       const services = await listLaunchdServices({ runProcess });
       const service = findLaunchdService(services, id);
       if (!service) return json(res, 404, { error: "LaunchD-Dienst ist nicht mehr vorhanden. Bitte Liste aktualisieren." });
-      if (launchdMatch[2] === "cleanup") return json(res, 200, { ok: true, ...(await cleanupLaunchdService(service, runProcess)) });
+      if (launchdMatch[2] === "cleanup") {
+        const cleaned = await cleanupLaunchdService(service, runProcess);
+        guestLaunchdCache.invalidate("launchd");
+        return json(res, 200, { ok: true, ...cleaned });
+      }
       const message = await executeLaunchdAction(service, launchdMatch[2], runProcess);
+      guestLaunchdCache.invalidate("launchd");
       return json(res, 200, { ok: true, message });
     }
     if (pathname === "/api/administration/settings" && ["GET", "POST"].includes(req.method)) {
