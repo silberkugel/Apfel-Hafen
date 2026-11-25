@@ -1374,13 +1374,17 @@ function applySecurityHeaders(res) {
 }
 
 async function readBody(req) {
-  let raw = "";
   const limit = String(req.url || "").startsWith("/api/compose/analyze") ? 2_200_000 : 524_288;
+  const chunks = [];
+  let received = 0;
   for await (const chunk of req) {
-    raw += chunk;
-    if (raw.length > limit) throw new Error("Anfrage ist zu groß.");
+    const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    received += bytes.length;
+    if (received > limit) throw new Error("Anfrage ist zu groß.");
+    chunks.push(bytes);
   }
-  return JSON.parse(raw || "{}");
+  // Join bytes before decoding: per-chunk toString could tear multi-byte UTF-8 characters apart.
+  return JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}");
 }
 
 // Unauthenticated callers may see a redacted overview (names + status) but never
@@ -1493,7 +1497,9 @@ async function handleApi(req, res, pathname) {
         administrator = await authenticateAdministrator(username, password);
       } catch (error) {
         recordLoginFailure(rateKey);
-        throw error;
+        // Answer directly: the generic API catch hides error details from
+        // unauthenticated callers, but the login feedback must stay visible.
+        return json(res, 401, { error: error.message });
       }
       clearLoginFailures(rateKey);
       const token = randomBytes(32).toString("base64url");
@@ -1837,6 +1843,11 @@ async function handleApi(req, res, pathname) {
     const serviceHint = /connection|connect|not running|operation not permitted/i.test(error.message)
       ? " Prüfe mit „container system status“, ob der Apple-Containerdienst für diesen Benutzer läuft."
       : "";
+    // Raw error text can contain paths or CLI internals — it is for admins only.
+    if (!currentSession(req)) {
+      console.error(`[api] ${pathname}: ${error.message}`);
+      return json(res, 500, { error: "Interner Fehler. Bitte erneut versuchen oder im Protokoll nachsehen." });
+    }
     return json(res, 500, { error: `${error.message}${serviceHint}` });
   }
 }
@@ -1882,9 +1893,10 @@ function serveStatic(req, res, pathname) {
   let file = normalize(join(dist, relative));
   let stat;
   try { stat = statSync(file); } catch { stat = null; }
-  // Only stream regular files. A directory (e.g. "/assets/") would otherwise
-  // raise EISDIR on the read stream and, unhandled, crash the server.
-  if (!file.startsWith(dist) || !stat?.isFile()) file = join(dist, "index.html");
+  // Only stream regular files inside dist. The prefix check must include the
+  // separator — "/dist" alone would also match a sibling directory "/district" —
+  // and a directory (e.g. "/assets/") would otherwise raise EISDIR on the stream.
+  if ((file !== dist && !file.startsWith(dist + "/")) || !stat?.isFile()) file = join(dist, "index.html");
   const types = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml" };
   res.writeHead(200, { "Content-Type": types[extname(file)] || "application/octet-stream" });
   const stream = createReadStream(file);
