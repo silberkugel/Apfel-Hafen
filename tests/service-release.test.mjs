@@ -222,3 +222,13 @@ test("0.3.3 adds a read-only Compose analysis to the application", async () => {
   assert.match(composeCenter, /\/api\/compose\/plan/);
   assert.doesNotMatch(composeCenter, /\/api\/containers/);
 });
+
+test("container settings mask secrets and keep untouched secret values", async () => {
+  const [server, client] = await Promise.all([
+    readFile(new URL("../server.mjs", import.meta.url), "utf8"),
+    readFile(new URL("../src/main.jsx", import.meta.url), "utf8"),
+  ]);
+  assert.match(server, /mergeSecretVariables\(settings\.variables, record\.configuration\?\.initProcess\?\.environment\)/, "leere Secret-Felder werden aus der Sicherung rekonstruiert");
+  assert.match(server, /buildCreateArgs\(record, image, null, \{ \.\.\.settings, variables: mergedVariables \}\)/, "Ersetzen nutzt die zusammengeführten Variablen");
+  assert.match(client, /type=\{v\.secret \? "password" : "text"\}[\s\S]*secretKept/, "Secret-Werte im Bearbeiten-Dialog sind maskiert");
+});
