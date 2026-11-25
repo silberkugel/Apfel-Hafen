@@ -9,11 +9,15 @@ if [[ -x "$PROJECT_DIR/runtime/node" ]]; then
   NODE_BIN="$PROJECT_DIR/runtime/node"
 fi
 if [[ -z "$NODE_BIN" ]]; then
-  NODE_BIN="$(command -v node 2>/dev/null || true)"
-fi
-if [[ -z "$NODE_BIN" ]]; then
-  osascript -e 'display alert "Node.js is missing" message "Install Node.js and then start Apfel-Hafen again." as critical'
-  exit 1
+  # Never fall back to `command -v node`: a PATH-hijacked binary would run the
+  # admin server and its PAM flow outside the bundled, checksum-verified runtime.
+  # Development checkouts can opt in explicitly via APFEL_HAFEN_NODE.
+  if [[ -n "${APFEL_HAFEN_NODE:-}" && -x "$APFEL_HAFEN_NODE" ]]; then
+    NODE_BIN="$APFEL_HAFEN_NODE"
+  else
+    osascript -e 'display alert "Node.js runtime is missing" message "The bundled runtime ./runtime/node is missing. Reinstall Apfel-Hafen from the release archive, or set APFEL_HAFEN_NODE explicitly for development use." as critical'
+    exit 1
+  fi
 fi
 
 if [[ ! -f "$PROJECT_DIR/dist/index.html" ]]; then

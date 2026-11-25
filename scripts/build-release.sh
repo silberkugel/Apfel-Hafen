@@ -33,16 +33,25 @@ pnpm install --frozen-lockfile
 pnpm test
 pnpm build
 cc auth/pam-auth.c -o auth/pam-auth -lpam
-codesign --force --sign - auth/pam-auth
+RELEASE_SIGNING_IDENTITY="${APFEL_HAFEN_SIGNING_IDENTITY:--}"
+if [[ "$RELEASE_SIGNING_IDENTITY" == "-" ]]; then
+  print -u2 -- "Warnung: pam-auth wird ad-hoc signiert — nur für lokale Entwicklung; Releases benötigen eine Developer-ID."
+  codesign --force --sign - auth/pam-auth
+else
+  codesign --force --timestamp --options runtime --sign "$RELEASE_SIGNING_IDENTITY" auth/pam-auth
+fi
 
 mkdir -p "$CACHE_DIR"
-if [[ ! -f "$CACHE_DIR/$NODE_ARCHIVE" || ! -f "$CACHE_DIR/SHASUMS256-$NODE_VERSION.txt" ]]; then
+if [[ ! -f "$CACHE_DIR/$NODE_ARCHIVE" ]]; then
   print -- "Lade die gebündelte Node.js-Laufzeit $NODE_VERSION von nodejs.org …"
   curl --fail --location --proto '=https' --tlsv1.2 \
     "$NODE_URL" --output "$CACHE_DIR/$NODE_ARCHIVE"
-  curl --fail --location --proto '=https' --tlsv1.2 \
-    "$SHASUMS_URL" --output "$CACHE_DIR/SHASUMS256-$NODE_VERSION.txt"
 fi
+# Fetch the checksum list fresh on every run: a cached list would re-trust a
+# tampered cached archive instead of detecting it.
+curl --fail --location --proto '=https' --tlsv1.2 \
+  "$SHASUMS_URL" --output "$CACHE_DIR/SHASUMS256-$NODE_VERSION.txt.tmp"
+mv "$CACHE_DIR/SHASUMS256-$NODE_VERSION.txt.tmp" "$CACHE_DIR/SHASUMS256-$NODE_VERSION.txt"
 
 expected="$(awk -v file="$NODE_ARCHIVE" '$2 == file { print $1 }' "$CACHE_DIR/SHASUMS256-$NODE_VERSION.txt")"
 actual="$(shasum -a 256 "$CACHE_DIR/$NODE_ARCHIVE" | awk '{ print $1 }')"

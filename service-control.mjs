@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { request } from "node:https";
 import { chmod, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
-import { existsSync } from "node:fs";
+import { existsSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { launchAgentPlist } from "./lib/autostart.mjs";
@@ -67,9 +67,21 @@ async function rotateServiceLogs() {
   ]);
 }
 
+function assertInstallationIntegrity() {
+  // A group- or world-writable install directory lets any other process replace
+  // server.mjs, and launchd would restart the planted code as this user.
+  for (const path of [root, serverPath, join(root, "dist"), existsSync(bundledNode) ? bundledNode : serverPath]) {
+    const stat = statSync(path);
+    if (stat.mode & 0o022) {
+      throw new Error(`Berechtigungen: ${path} ist für Gruppe oder Andere schreibbar. Bitte „chmod -R go-w“ auf dem Installationsordner ausführen.`);
+    }
+  }
+}
+
 async function install() {
   if (!existsSync(serverPath)) throw new Error(`Server fehlt: ${serverPath}`);
   if (!existsSync(join(root, "dist", "index.html"))) throw new Error("Die gebaute Weboberfläche fehlt.");
+  assertInstallationIntegrity();
 
   await mkdir(join(userHome, "Library", "LaunchAgents"), { recursive: true });
   await mkdir(logDir, { recursive: true });
