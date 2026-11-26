@@ -3,7 +3,7 @@ import { spawn } from "node:child_process";
 import { createReadStream, existsSync, statSync } from "node:fs";
 import { chmod, cp, mkdtemp, mkdir, readFile, readdir, rename, rm, stat, statfs, writeFile } from "node:fs/promises";
 import { randomBytes } from "node:crypto";
-import { extname, isAbsolute, join, normalize, relative, resolve } from "node:path";
+import { extname, isAbsolute, join, normalize, relative, resolve, sep } from "node:path";
 import { arch, cpus, homedir, loadavg, release, totalmem, uptime } from "node:os";
 import { fileURLToPath } from "node:url";
 import { disabledFromLaunchctl, launchAgentPlist, programFromLaunchctl } from "./lib/autostart.mjs";
@@ -26,6 +26,7 @@ import { analyzeCompose, composeRuntimeDraft } from "./lib/compose-analysis.mjs"
 import { createComposePlan, preflightComposePlan } from "./lib/compose-plan.mjs";
 import { recoveryActions, restoreStopSource, safeStackSummary, stackManifest, stackRecovery, verifyStackManifest } from "./lib/stack-safety.mjs";
 import { acquireServiceLock, installServiceLogContext, releaseServiceLock, serviceRuntimePaths } from "./lib/service-runtime.mjs";
+import { createGuestReadCache, createGuestReadGuard, guestReadPaths, guestReadRateLimited } from "./lib/guest-read-guard.mjs";
 
 const root = fileURLToPath(new URL(".", import.meta.url));
 const logContext = installServiceLogContext();
@@ -54,6 +55,11 @@ let systemStoppedByUser = false;
 let previousHostCpu = null;
 let previousContainerStats = new Map();
 const technologySnapshotCache = { value: null, createdAt: 0, pending: null };
+// Guest reads spawn CLI/launchctl subprocesses per request; a per-address
+// rate limit bounds the fan-out and a short cache serves repeated polls.
+const guestReadGuard = createGuestReadGuard({ windowMs: 60_000, maxRequests: 30 });
+const guestContainersCache = createGuestReadCache({ ttlMs: 5_000 });
+const guestLaunchdCache = createGuestReadCache({ ttlMs: 15_000 });
 const sessionDurationMs = 30 * 60 * 1000;
 const mcpTokenPath = runtimePaths.mcpToken;
 const mcpToken = await (async () => {
@@ -146,6 +152,7 @@ const englishMessages = new Map([
   ["Anfrage ist zu groß.", "The request is too large."],
   ["Anmeldung ist nur von der lokalen Oberfläche erlaubt.", "Sign-in is allowed only from the local interface."],
   ["Zu viele Anmeldeversuche. Bitte fünf Minuten warten.", "Too many sign-in attempts. Wait five minutes."],
+  ["Zu viele Anfragen. Bitte kurz warten.", "Too many requests. Wait a moment."],
   ["Abmeldung ist nur von der lokalen Oberfläche erlaubt.", "Sign-out is allowed only from the local interface."],
   ["Bitte als macOS-Administrator anmelden.", "Sign in as a macOS administrator."],
   ["Einstellungen dürfen nur von der lokalen Oberfläche geändert werden.", "Settings may be changed only from the local interface."],
@@ -448,6 +455,30 @@ function loginAttemptAllowed(key) {
   return recentLoginFailures(key, Date.now()).length < loginMaxFailures;
 }
 
+// Coarse second gate keyed by address alone: the per-user bucket alone lets a
+// caller on the LAN (listenHost 0.0.0.0) vary the username and spawn pam-auth
+// subprocesses without bound. Every attempt that reaches PAM counts here.
+const loginAddressWindowMs = 5 * 60 * 1000;
+const loginAddressMaxAttempts = 30;
+const loginAttemptsByAddress = new Map();
+
+function loginAddressAllowed(address, now = Date.now()) {
+  return (loginAttemptsByAddress.get(address) || []).filter((time) => now - time < loginAddressWindowMs).length < loginAddressMaxAttempts;
+}
+
+function recordLoginAttempt(address, now = Date.now()) {
+  const fresh = (loginAttemptsByAddress.get(address) || []).filter((time) => now - time < loginAddressWindowMs);
+  fresh.push(now);
+  loginAttemptsByAddress.set(address, fresh);
+  if (loginAttemptsByAddress.size > 1000) {
+    for (const [stored, times] of loginAttemptsByAddress) {
+      const kept = times.filter((time) => now - time < loginAddressWindowMs);
+      if (kept.length) loginAttemptsByAddress.set(stored, kept);
+      else loginAttemptsByAddress.delete(stored);
+    }
+  }
+}
+
 function recordLoginFailure(key) {
   const now = Date.now();
   loginAttempts.set(key, [...recentLoginFailures(key, now), now]);
@@ -682,9 +713,11 @@ async function installStack(body) {
       }
     }
     await writeStack(manifest);
+    invalidateTechnologySnapshot();
     return { message: `Stack „${manifest.stackName}“ wurde mit ${manifest.services.length} Diensten gestartet.`, stack: safeStackSummary(manifest) };
   } catch (error) {
     for (const name of created.reverse()) await runContainer(["delete", "--force", name]).catch(() => {});
+    invalidateTechnologySnapshot();
     throw new Error(`Der Stack wurde nicht vollständig gestartet; neu angelegte Container wurden zurückgerollt. Ursache: ${error.message}`);
   }
 }
@@ -708,6 +741,7 @@ async function stackAction(name, action) {
   manifest.desiredState = action === "stop" ? "stopped" : "running";
   manifest.lastActionAt = new Date().toISOString();
   await writeStack(manifest);
+  invalidateTechnologySnapshot();
   return { message: `Stack „${name}“ wurde ${action === "stop" ? "gestoppt" : "gestartet"}.`, stack: safeStackSummary(manifest) };
 }
 
@@ -853,6 +887,8 @@ async function cachedTechnologySnapshot() {
 
 function invalidateTechnologySnapshot() {
   technologySnapshotCache.createdAt = 0;
+  // Admin changes must be visible to guest polls immediately, not TTL-late.
+  guestContainersCache.invalidate("containers");
 }
 
 function mcpContainerName(args) {
@@ -1106,6 +1142,7 @@ async function createContainer(input) {
   } catch (error) {
     throw new Error(`Der Container konnte nicht gestartet werden. Er bleibt für die Fehlersuche erhalten; öffne beim Container „Startprotokoll anzeigen“. Ursache: ${error.message}`);
   }
+  invalidateTechnologySnapshot();
   return { message: draft.start ? "Container wurde erstellt und gestartet." : "Container wurde erstellt." };
 }
 
@@ -1127,6 +1164,7 @@ async function deleteContainer(name, input) {
     for (const source of removableSources) await rm(source, { recursive: true, force: true });
   }
   checkedUpdates.delete(name);
+  invalidateTechnologySnapshot();
   return { message: input?.deleteVolumes ? "Container und zugehörige Volume-Daten wurden gelöscht." : "Container wurde gelöscht." };
 }
 
@@ -1375,7 +1413,10 @@ function applySecurityHeaders(res) {
 
 async function readBody(req) {
   let raw = "";
-  const limit = String(req.url || "").startsWith("/api/compose/analyze") ? 2_200_000 : 524_288;
+  // Logins only ever carry small credentials; keep the unauthenticated body
+  // budget tiny so pre-auth floods cannot pin megabytes in parsed JSON.
+  const url = String(req.url || "");
+  const limit = url.startsWith("/api/compose/analyze") ? 2_200_000 : url === "/api/auth/login" ? 16_384 : 524_288;
   for await (const chunk of req) {
     raw += chunk;
     if (raw.length > limit) throw new Error("Anfrage ist zu groß.");
@@ -1398,6 +1439,9 @@ function redactLaunchdServices(services) {
 
 async function handleApi(req, res, pathname) {
   try {
+    if (req.method === "GET" && !currentSession(req) && guestReadPaths.has(pathname) && guestReadRateLimited(guestReadGuard, req)) {
+      return json(res, 429, { error: "Zu viele Anfragen. Bitte kurz warten." }, { "Retry-After": "60" });
+    }
     const snapshotMatch = pathname.match(/^\/api\/(?:system\/logs|containers\/([^/]+)\/logs)\/snapshot$/);
     if (req.method === "GET" && snapshotMatch) {
       if (!currentSession(req)) return json(res, 401, { error: "Bitte als macOS-Administrator anmelden." });
@@ -1487,7 +1531,9 @@ async function handleApi(req, res, pathname) {
       const password = String(body.password || "");
       body.password = "";
       const rateKey = loginRateLimitKey(req, username);
-      if (!loginAttemptAllowed(rateKey)) return json(res, 429, { error: "Zu viele Anmeldeversuche. Bitte fünf Minuten warten." });
+      const address = req.socket.remoteAddress || "local";
+      if (!loginAttemptAllowed(rateKey) || !loginAddressAllowed(address)) return json(res, 429, { error: "Zu viele Anmeldeversuche. Bitte fünf Minuten warten." });
+      recordLoginAttempt(address);
       let administrator;
       try {
         administrator = await authenticateAdministrator(username, password);
@@ -1510,18 +1556,22 @@ async function handleApi(req, res, pathname) {
       return json(res, 200, { authenticated: false }, { "Set-Cookie": `${sessionCookieName}=; ${sessionCookieAttributes}; Max-Age=0` });
     }
     if (req.method === "GET" && pathname === "/api/containers") {
-      const { containers } = await currentState();
+      // Admin reads stay uncached; guests get the redacted view from a
+      // short-lived shared cache so repeated polls reuse one CLI call.
+      const { containers } = currentSession(req) ? await currentState() : await guestContainersCache.read("containers", currentState);
       return json(res, 200, { containers: currentSession(req) ? containers : redactContainers(containers), refreshedAt: new Date().toISOString() });
     }
     if (req.method === "GET" && pathname === "/api/services/launchd") {
-      const services = await listLaunchdServices({ runProcess });
+      const services = currentSession(req) ? await listLaunchdServices({ runProcess }) : await guestLaunchdCache.read("launchd", () => listLaunchdServices({ runProcess }));
       return json(res, 200, { services: currentSession(req) ? services : redactLaunchdServices(services), refreshedAt: new Date().toISOString() });
     }
     if (req.method === "POST" && pathname === "/api/services/launchd") {
       if (!requireLocalOrigin(req)) return json(res, 403, { error: "LaunchD-Dienste dürfen nur von der lokalen Oberfläche erstellt werden." });
       const session = currentSession(req);
       if (!session) return json(res, 401, { error: "Bitte als macOS-Administrator anmelden." });
-      return json(res, 201, { ok: true, ...(await createLaunchdService(await readBody(req), runProcess)) });
+      const createdService = await createLaunchdService(await readBody(req), runProcess);
+      guestLaunchdCache.invalidate("launchd");
+      return json(res, 201, { ok: true, ...createdService });
     }
     const launchdEditMatch = pathname.match(/^\/api\/services\/launchd\/([^/]+)$/);
     if (req.method === "PUT" && launchdEditMatch) {
@@ -1531,7 +1581,9 @@ async function handleApi(req, res, pathname) {
       const services = await listLaunchdServices({ runProcess });
       const service = findLaunchdService(services, decodeURIComponent(launchdEditMatch[1]));
       if (!service) return json(res, 404, { error: "LaunchD-Dienst ist nicht mehr vorhanden. Bitte Liste aktualisieren." });
-      return json(res, 200, { ok: true, ...(await updateLaunchdService(service, await readBody(req), runProcess)) });
+      const updatedService = await updateLaunchdService(service, await readBody(req), runProcess);
+      guestLaunchdCache.invalidate("launchd");
+      return json(res, 200, { ok: true, ...updatedService });
     }
     const launchdMatch = pathname.match(/^\/api\/services\/launchd\/([^/]+)\/(start|stop|restart|cleanup)$/);
     if (req.method === "POST" && launchdMatch) {
@@ -1542,8 +1594,13 @@ async function handleApi(req, res, pathname) {
       const services = await listLaunchdServices({ runProcess });
       const service = findLaunchdService(services, id);
       if (!service) return json(res, 404, { error: "LaunchD-Dienst ist nicht mehr vorhanden. Bitte Liste aktualisieren." });
-      if (launchdMatch[2] === "cleanup") return json(res, 200, { ok: true, ...(await cleanupLaunchdService(service, runProcess)) });
+      if (launchdMatch[2] === "cleanup") {
+        const cleaned = await cleanupLaunchdService(service, runProcess);
+        guestLaunchdCache.invalidate("launchd");
+        return json(res, 200, { ok: true, ...cleaned });
+      }
       const message = await executeLaunchdAction(service, launchdMatch[2], runProcess);
+      guestLaunchdCache.invalidate("launchd");
       return json(res, 200, { ok: true, message });
     }
     if (pathname === "/api/administration/settings" && ["GET", "POST"].includes(req.method)) {
@@ -1884,7 +1941,9 @@ function serveStatic(req, res, pathname) {
   try { stat = statSync(file); } catch { stat = null; }
   // Only stream regular files. A directory (e.g. "/assets/") would otherwise
   // raise EISDIR on the read stream and, unhandled, crash the server.
-  if (!file.startsWith(dist) || !stat?.isFile()) file = join(dist, "index.html");
+  // Separate-boundary prefix, so a sibling directory like "dist-secret" can
+  // never satisfy the check even if normalization ever lets a ".." through.
+  if (!file.startsWith(dist + sep) || !stat?.isFile()) file = join(dist, "index.html");
   const types = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml" };
   res.writeHead(200, { "Content-Type": types[extname(file)] || "application/octet-stream" });
   const stream = createReadStream(file);
