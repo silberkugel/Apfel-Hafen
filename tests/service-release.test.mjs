@@ -232,3 +232,17 @@ test("container settings mask secrets and keep untouched secret values", async (
   assert.match(server, /buildCreateArgs\(record, image, null, \{ \.\.\.settings, variables: mergedVariables \}\)/, "Ersetzen nutzt die zusammengeführten Variablen");
   assert.match(client, /type=\{v\.secret \? "password" : "text"\}[\s\S]*secretKept/, "Secret-Werte im Bearbeiten-Dialog sind maskiert");
 });
+
+test("login keeps two throttle gates and guest reads keep rate limit plus cache invalidation", async () => {
+  const server = await readFile(new URL("../server.mjs", import.meta.url), "utf8");
+
+  // Per-user failure bucket AND a coarse per-address attempt gate, so varying
+  // usernames cannot spawn pam-auth subprocesses without bound.
+  assert.match(server, /if \(!loginAttemptAllowed\(rateKey\) \|\| !loginAddressAllowed\(address\)\)/);
+  assert.match(server, /recordLoginAttempt\(address\);/);
+  assert.match(server, /url === "\/api\/auth\/login" \? 16_384/);
+  // Guest reads: 429 with Retry-After, and mutations invalidate the guest cache.
+  assert.match(server, /429, \{ error: "Zu viele Anfragen\. Bitte kurz warten\." \}, \{ "Retry-After": "60" \}/);
+  assert.match(server, /function invalidateTechnologySnapshot\(\)[\s\S]*?guestContainersCache\.invalidate\("containers"\);/);
+  assert.match(server, /guestLaunchdCache\.invalidate\("launchd"\);/);
+});
