@@ -8,7 +8,7 @@ import { arch, cpus, homedir, loadavg, release, totalmem, uptime } from "node:os
 import { fileURLToPath } from "node:url";
 import { disabledFromLaunchctl, launchAgentPlist, programFromLaunchctl } from "./lib/autostart.mjs";
 import { parseContainers } from "./lib/container-parser.mjs";
-import { buildCreateArgs, editableContainerSettings, imageDigestFromInspect, pinnedImage, replacementSummary } from "./lib/recreate-args.mjs";
+import { buildCreateArgs, editableContainerSettings, imageDigestFromInspect, mergeSecretVariables, pinnedImage, replacementSummary } from "./lib/recreate-args.mjs";
 import { buildNewContainerArgs, parseImageNames, validateContainerDraft, validateContainerSettings } from "./lib/container-create.mjs";
 import { dockerHubSearchInput, shouldPullImage, updateCheckResult } from "./lib/image-policy.mjs";
 import { imageProjectPath, imageVersion, latestStableTag, openCodeImageResult, openCodeSearchInput, parseComposeOpenCodeImages } from "./lib/opencode-source.mjs";
@@ -1315,15 +1315,18 @@ async function updateContainerSettings(name, input) {
 
   const occupiedPorts = containers.filter((container) => container.name !== name).flatMap((container) => container.ports);
   const settings = validateContainerSettings(input, occupiedPorts);
+  // Secret fields render masked in the dialog; an untouched masked field must
+  // keep its stored value instead of silently wiping the secret on replace.
+  const mergedVariables = mergeSecretVariables(settings.variables, record.configuration?.initProcess?.environment);
   const wasRunning = selected.status === "running";
   const image = String(record.configuration?.image?.reference || selected.image || "");
   if (!image) throw new Error("Image-Referenz fehlt.");
   const backupPath = await saveBackup(name, record, { type: "settings", requestedAt: new Date().toISOString() });
-  const createArgs = buildCreateArgs(record, image, null, settings);
+  const createArgs = buildCreateArgs(record, image, null, { ...settings, variables: mergedVariables });
   const rollbackImage = selected.digest ? pinnedImage(image, selected.digest) : image;
   const rollbackArgs = buildCreateArgs(record, rollbackImage);
   const preflightName = `${name}-settings-test-${Date.now().toString(36)}`;
-  const preflightArgs = buildCreateArgs(record, image, preflightName, settings);
+  const preflightArgs = buildCreateArgs(record, image, preflightName, { ...settings, variables: mergedVariables });
   let oldDeleted = false;
 
   try {

@@ -265,6 +265,7 @@ footer { max-width: 1360px; margin: 46px auto 0; padding: 24px clamp(22px, 5vw, 
 .builder-row { display: grid !important; grid-template-columns: 1fr 1fr 100px 40px !important; gap: 8px !important; margin: 0 0 8px !important; }
 .builder-row input, .builder-row select { min-width: 0; height: 40px; padding: 0 9px; border: 1px solid #cbd0c9; background: #fff; }
 .builder-row label { align-self: center; color: #59665f; font-size: 11px; }
+.secret-flag { align-self: center; text-align: center; font-size: 13px; }
 .builder-row button { height: 40px; background: transparent; color: #874238; }
 .volume-path-preview { display: grid !important; grid-template-columns: auto minmax(0, 1fr) !important; gap: 10px !important; align-items: center; margin: 4px 0 7px !important; padding: 8px 10px; background: #eceee9; color: #647069; }
 .volume-path-preview span { font: 500 9px ui-monospace, SFMono-Regular, monospace; text-transform: uppercase; letter-spacing: .06em; }
