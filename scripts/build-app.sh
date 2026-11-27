@@ -17,6 +17,10 @@ SERVER="$RESOURCES/Server"
 AGENTS="$CONTENTS/Library/LaunchAgents"
 MODULE_CACHE="$PROJECT_DIR/.build/ModuleCache"
 SIGNING_IDENTITY="${APFEL_HAFEN_SIGNING_IDENTITY:--}"
+if [[ "$SIGNING_IDENTITY" == "-" ]]; then
+  print -u2 -- "Warnung: Ad-hoc-Signierung — Artefakt ist nicht für Verteilung über Gatekeeper qualifiziert."
+  print -u2 -- "Für verteilbare Releases APFEL_HAFEN_SIGNING_IDENTITY auf eine Developer-ID setzen und notarisieren."
+fi
 
 print -- "Baue Webserver und selbständige Laufzeit …"
 zsh scripts/build-release.sh

@@ -42,14 +42,25 @@ static int conversation(int count, const struct pam_message **messages,
 int main(int argc, char **argv) {
   if (argc != 2) return 2;
 
-  char password[1025] = {0};
-  size_t length = fread(password, 1, sizeof(password) - 1, stdin);
-  if (ferror(stdin) || length == 0) return 2;
-  while (length > 0 && (password[length - 1] == '\n' || password[length - 1] == '\r')) {
-    password[--length] = '\0';
+  // Read the whole stdin line instead of truncating at the buffer edge, so
+  // long passphrases authenticate instead of silently failing. getdelim grows
+  // the buffer as needed; the caller caps the body upstream.
+  char *line = NULL;
+  size_t capacity = 0;
+  ssize_t length = getdelim(&line, &capacity, '\n', stdin);
+  if (length <= 0) {
+    free(line);
+    return 2;
+  }
+  while (length > 0 && (line[length - 1] == '\n' || line[length - 1] == '\r')) {
+    line[--length] = '\0';
+  }
+  if (length == 0) {
+    free(line);
+    return 2;
   }
 
-  struct credentials credentials = { .password = password };
+  struct credentials credentials = { .password = line };
   struct pam_conv pam_conversation = { .conv = conversation, .appdata_ptr = &credentials };
   pam_handle_t *handle = NULL;
   int status = pam_start("login", argv[1], &pam_conversation, &handle);
@@ -57,6 +68,7 @@ int main(int argc, char **argv) {
   if (status == PAM_SUCCESS) status = pam_acct_mgmt(handle, PAM_SILENT);
   if (handle != NULL) pam_end(handle, status);
 
-  memset(password, 0, sizeof(password));
+  memset(line, 0, strlen(line));
+  free(line);
   return status == PAM_SUCCESS ? 0 : 1;
 }
