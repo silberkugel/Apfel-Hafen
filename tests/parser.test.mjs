@@ -4,7 +4,7 @@ import { mkdtemp, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parseContainers } from "../lib/container-parser.mjs";
-import { buildCreateArgs, editableContainerSettings, imageDigestFromInspect, pinnedImage } from "../lib/recreate-args.mjs";
+import { buildCreateArgs, editableContainerSettings, imageDigestFromInspect, looksSecret, mergeSecretVariables, pinnedImage } from "../lib/recreate-args.mjs";
 import { buildNewContainerArgs, parseImageNames, safeVolumeSource, validateContainerDraft, validateContainerSettings } from "../lib/container-create.mjs";
 import { normalizeListenHost, requestMatchesOrigin } from "../lib/network-settings.mjs";
 import { ensureFallbackCertificate, installCustomCertificate, loadTlsCertificate, removeCustomCertificate } from "../lib/tls-certificates.mjs";
@@ -67,7 +67,7 @@ test("uses a temporary name for non-destructive preflight creation", () => {
 
 test("extracts editable settings and applies overrides while preserving other options", () => {
   const settings = editableContainerSettings(record);
-  assert.deepEqual(settings.variables, [{ key: "TZ", value: "Europe/Berlin" }]);
+  assert.deepEqual(settings.variables, [{ key: "TZ", value: "Europe/Berlin", secret: false, hasValue: true }]);
   assert.deepEqual(settings.arguments, ["evcc"]);
   assert.equal(settings.memoryMb, 1024);
   const changed = validateContainerSettings({ ...settings, cpus: 4, ports: [{ hostPort: 8080, containerPort: 80, protocol: "tcp" }] });
@@ -76,6 +76,35 @@ test("extracts editable settings and applies overrides while preserving other op
   assert.ok(args.includes("1024M"));
   assert.ok(args.includes("8080:80/tcp"));
   assert.ok(args.includes("--network"));
+});
+
+test("edit dialog payload masks secret variables and empty fields keep stored values", () => {
+  const secretRecord = {
+    id: "evcc",
+    configuration: { image: { reference: "docker.io/evcc/evcc:latest" }, initProcess: { environment: ["TZ=Europe/Berlin", "POSTGRES_PASSWORD=geheim", "API_KEY=k123", "SESSION_TOKEN="] } },
+  };
+  const variables = editableContainerSettings(secretRecord).variables;
+  assert.deepEqual(variables, [
+    { key: "TZ", value: "Europe/Berlin", secret: false, hasValue: true },
+    { key: "POSTGRES_PASSWORD", value: "", secret: true, hasValue: true },
+    { key: "API_KEY", value: "", secret: true, hasValue: true },
+    { key: "SESSION_TOKEN", value: "", secret: true, hasValue: false },
+  ]);
+  assert.ok(!JSON.stringify(variables).includes("geheim"), "kein Secret-Wert im Dialog-Payload");
+
+  // Unchanged masked fields fall back to the stored value; typed values win.
+  const submitted = validateContainerSettings({ cpus: 2, memoryMb: 512, variables: [
+    { key: "TZ", value: "Europe/Berlin" },
+    { key: "POSTGRES_PASSWORD", value: "" },
+    { key: "API_KEY", value: "neu456" },
+    { key: "SESSION_TOKEN", value: "" },
+  ] });
+  const merged = mergeSecretVariables(submitted.variables, secretRecord.configuration.initProcess.environment);
+  assert.deepEqual(merged.map(({ key, value }) => `${key}=${value}`), ["TZ=Europe/Berlin", "POSTGRES_PASSWORD=geheim", "API_KEY=neu456", "SESSION_TOKEN="]);
+
+  const args = buildCreateArgs(secretRecord, "docker.io/evcc/evcc:latest", null, { ...submitted, variables: merged });
+  assert.ok(args.includes("POSTGRES_PASSWORD=geheim"), "bestehendes Secret bleibt beim Ersetzen erhalten");
+  assert.ok(args.includes("API_KEY=neu456"));
 });
 
 test("rejects conflicting edit ports and relative edit volume sources", () => {
